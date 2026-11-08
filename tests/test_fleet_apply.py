@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""fleet-apply 纯函数单测（不触网、不碰真实材料文件）。
+
+运行：python3 -m unittest discover -s tests -v
+"""
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import fleet_apply as fa  # noqa: E402
+
+
+class NormalizeTest(unittest.TestCase):
+    def test_strips_double_quotes(self):
+        self.assertEqual(fa.normalize('"sk-abc"'), "sk-abc")
+
+    def test_strips_single_quotes(self):
+        self.assertEqual(fa.normalize("'sk-abc'"), "sk-abc")
+
+    def test_plain_untouched(self):
+        self.assertEqual(fa.normalize("sk-abc"), "sk-abc")
+
+    def test_mismatched_quotes_untouched(self):
+        self.assertEqual(fa.normalize('"sk-abc\''), '"sk-abc\'')
+
+
+class ExpandVarsTest(unittest.TestCase):
+    def test_simple_var(self):
+        self.assertEqual(fa.expand_vars("unix://${X}/p.sock", {"X": "/run/u"}), "unix:///run/u/p.sock")
+
+    def test_default_used_when_missing(self):
+        self.assertEqual(fa.expand_vars("${MISSING:-/fallback}", {}), "/fallback")
+
+    def test_value_wins_over_default(self):
+        self.assertEqual(fa.expand_vars("${V:-/fb}", {"V": "/real"}), "/real")
+
+    def test_missing_without_default_kept(self):
+        self.assertEqual(fa.expand_vars("${NOPE}", {}), "${NOPE}")
+
+
+class EnvCodecTest(unittest.TestCase):
+    def test_render_safe_raw(self):
+        self.assertEqual(fa.render_value("sk-abc_1.2:x/y"), "sk-abc_1.2:x/y")
+
+    def test_render_special_quoted(self):
+        self.assertEqual(fa.render_value("a b"), '"a b"')
+
+    def test_render_escapes_quote(self):
+        self.assertEqual(fa.render_value('a"b'), '"a\\"b"')
+
+    def test_parse_env_lines(self):
+        text = "# c\nA=1\nB=\"two\"\nNOT A LINE\nC=3\n"
+        self.assertEqual(fa.parse_env_lines(text), {"A": "1", "B": '"two"', "C": "3"})
+
+
+class ManagedBlockTest(unittest.TestCase):
+    OUTSIDE = "KEEP=1\n# comment\nOTHER=x\n"
+
+    def test_insert_into_empty(self):
+        new, changes, conflicts = fa.merge_managed_block("", {"A": "v1"}, force=False)
+        self.assertIn(fa.BEGIN, new)
+        self.assertIn("A=v1\n", new)
+        self.assertIn(fa.END, new)
+        self.assertEqual(conflicts, [])
+        self.assertTrue(changes)
+
+    def test_replace_block_preserves_outside(self):
+        text = self.OUTSIDE + fa.render_block({"A": "old"}) + "TAIL=9\n"
+        new, changes, _ = fa.merge_managed_block(text, {"A": "new"}, force=False)
+        self.assertIn("KEEP=1\n", new)
+        self.assertIn("TAIL=9\n", new)
+        self.assertIn("A=new\n", new)
+        self.assertNotIn("A=old", new)
+        self.assertTrue(any("更新" in c for c in changes))
+
+    def test_moves_same_value_outside_line_into_block(self):
+        text = "A= same \nKEEP=1\n"  # 归一后同值
+        new, changes, conflicts = fa.merge_managed_block(
+            text, {"A": "same"}, force=False
+        )
+        self.assertEqual(conflicts, [])
+        # 块外不再有 A，块内有 A
+        block_vars, outside_vars, _, found = fa.split_managed(new)
+        self.assertTrue(found)
+        self.assertIn("A", block_vars)
+        self.assertNotIn("A", outside_vars)
+        self.assertIn("KEEP=1", new)
+
+    def test_conflict_keeps_outside_value_unless_force(self):
+        text = "A=different\nKEEP=1\n"
+        new, changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=False)
+        self.assertEqual(len(conflicts), 1)
+        self.assertIn("A=different", new)          # 块外原值继续生效
+        block_vars = fa.parse_env_lines(new.split(fa.BEGIN)[1].split(fa.END)[0])
+        self.assertNotIn("A", block_vars)          # 冲突变量不进块
+        self.assertIn("KEEP=1", new)
+
+    def test_force_overwrites_conflict(self):
+        text = "A=different\n"
+        new, changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=True)
+        self.assertEqual(conflicts, [])
+        self.assertNotIn("A=different", new)
+        block_vars = fa.parse_env_lines(new.split(fa.BEGIN)[1].split(fa.END)[0])
+        self.assertEqual(fa.normalize(block_vars["A"]), "persona")
+
+    def test_idempotent_second_run(self):
+        first, _, _ = fa.merge_managed_block("", {"A": "v1", "B": "v2"}, force=False)
+        second, changes, conflicts = fa.merge_managed_block(first, {"A": "v1", "B": "v2"}, force=False)
+        self.assertEqual(first, second)
+        self.assertEqual(changes, [])
+        self.assertEqual(conflicts, [])
+
+
+class YamlPathTest(unittest.TestCase):
+    NODE = {"model": {"api_key": "x"}, "fallback_providers": [{"api_key": "y"}]}
+
+    def test_nested(self):
+        self.assertEqual(fa.yaml_get_path(self.NODE, "model.api_key"), "x")
+
+    def test_index(self):
+        self.assertEqual(fa.yaml_get_path(self.NODE, "fallback_providers[0].api_key"), "y")
+
+    def test_missing_raises(self):
+        with self.assertRaises(KeyError):
+            fa.yaml_get_path(self.NODE, "model.nope")
+
+
+class PlaintextScanTest(unittest.TestCase):
+    def _scan(self, cfg: dict, vault: dict, allow: dict):
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".yaml", delete=False
+        ) as f:
+            import yaml as _yaml
+
+            _yaml.safe_dump(cfg, f)
+            path = Path(f.name)
+        try:
+            fail = fa.CheckFailure()
+            fa.scan_plaintext_leaks("litellm", path, vault, allow, fail)
+            return fail.errors
+        finally:
+            path.unlink()
+
+    def test_env_ref_ok(self):
+        cfg = {"model_list": [
+            {"model_name": "m1", "litellm_params": {"api_key": "os.environ/V"}}]}
+        self.assertEqual(self._scan(cfg, {"m1": "sk-v"}, {}), [])
+
+    def test_vault_value_in_plaintext_fails(self):
+        cfg = {"model_list": [
+            {"model_name": "m1", "litellm_params": {"api_key": "sk-v"}}]}
+        errors = self._scan(cfg, {"m1": "sk-v"}, {"m1": 1})
+        # 明文 == vault 值 → 泄漏失败（即使 allow 里登记了）
+        self.assertTrue(any("明文存放 vault 值" in e for e in errors))
+
+    def test_orphan_over_allowlist_fails(self):
+        cfg = {"model_list": [
+            {"model_name": "m1", "litellm_params": {"api_key": "orphan-key"}}]}
+        errors = self._scan(cfg, {"other": "sk-x"}, {"m1": 0})
+        self.assertTrue(any("明文行 1 > 允许" in e for e in errors))
+
+    def test_orphan_allowlist_match_ok(self):
+        cfg = {"model_list": [
+            {"model_name": "m1", "litellm_params": {"api_key": "orphan-key"}}]}
+        self.assertEqual(self._scan(cfg, {"other": "sk-x"}, {"m1": 1}), [])
+
+    def test_orphan_below_registered_fails(self):
+        cfg = {"model_list": []}
+        errors = self._scan(cfg, {"other": "sk-x"}, {"m1": 1})
+        self.assertTrue(any("补录后请收紧" in e for e in errors))
+
+
+class FleetYamlSchemaTest(unittest.TestCase):
+    def test_repo_fleet_yaml_loads(self):
+        cfg = fa.load_fleet(Path(__file__).resolve().parent.parent / "fleet.yaml")
+        self.assertEqual(len(cfg["providers"]), 22)
+        self.assertIn("litellm-env", cfg["materials"])
+        self.assertIn("hermes-env", cfg["materials"])
+
+
+if __name__ == "__main__":
+    unittest.main()

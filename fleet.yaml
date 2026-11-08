@@ -1,0 +1,251 @@
+# gateway-fleet — LLM 网关舰队配置
+#
+# 非密配置的唯一事实源；密钥永驻 persona 身份 llm-automation，本文件只放
+# 引用（SecretRef 形态 = persona secrets resolve 的 IDENTITY/ITEM/FIELD）。
+# 红线：任何密钥值不得写入本文件。
+#
+# 应用：fleet-apply --check（校验）/ --apply（落地可写材料）。见 README。
+
+version: 1
+
+vault:
+  identity: llm-automation
+  resolver: connect                  # Connect API：unix socket + pconn token（无需主密码）
+  endpoint: "unix://${XDG_RUNTIME_DIR:-/run/user/1000}/persona/connect.sock"
+  token_env: PERSONA_CONNECT_TOKEN   # token 只经 env 注入；当前 token 2027-02-06 到期
+  normalize: strip-quotes            # 历史导入瑕疵：litellm-master-key 存成了带引号形态
+
+# 可写材料：fleet-apply --apply 生成（0600），块外旧值与 persona 不一致时跳过并报告（--force 覆盖）
+materials:
+  litellm-env:
+    path: ~/.local/share/litellm/env.systemd
+    mode: "0600"
+    restart_hint: "systemctl --user restart litellm"   # 仅当值实际变化时需要
+  hermes-env:
+    path: ~/.hermes/.env
+    mode: "0600"
+    restart_hint: null               # hermes 每次加载配置重读 .env（mtime/env 快照失效）
+
+# 消费方 target 语义：
+#   litellm-env / hermes-env  —— 写入对应 material 的托管块（vars 为该文件中的变量名）
+#   hermes-config             —— 校验 yaml 路径当前值 == ref（一次性接线后防退回明文）
+#   bifrost-key               —— 只读校验：bifrost config_keys 中同名 key 的值 == persona 值
+#   magpie-caller             —— 只读校验：magpie caller-keys.json 中同名 caller 的 secret == persona 值
+providers:
+  - item: bifrost-vk-main-all-providers
+    vendor: bifrost
+    base_url: http://127.0.0.1:8081/v1
+    note: 主路由虚拟键；hermes 主模型/fallback/custom provider 共用
+    consumers:
+      - target: hermes-env
+        vars: [BIFROST_VK_MAIN]
+      - target: hermes-config
+        ref: "${BIFROST_VK_MAIN}"
+        paths: [model.api_key, "fallback_providers[0].api_key", providers.custom.api_key]
+      - target: bifrost-vk
+        name: main-all-providers
+
+  - item: litellm-master-key
+    vendor: litellm
+    base_url: http://127.0.0.1:4000
+    note: litellm 网关管理密钥；hermes delegation 指向 litellm:4000 同用此键（历史上明文内联）
+    consumers:
+      - target: litellm-env
+        vars: [LITELLM_MASTER_KEY]
+      - target: hermes-env
+        vars: [LITELLM_MASTER_KEY]
+      - target: hermes-config
+        ref: "${LITELLM_MASTER_KEY}"
+        paths: [delegation.api_key, "delegation.fallback_providers[0].api_key"]
+
+  - item: zai-glm
+    vendor: zhipu
+    base_url: https://api.z.ai/api/anthropic
+    consumers:
+      - target: litellm-env
+        vars: [ZAI_AUTH_TOKEN]
+      - target: hermes-env
+        vars: [GLM_API_KEY]
+      - target: bifrost-key
+        name: zai-glm
+
+  - item: deepseek-official
+    vendor: deepseek
+    base_url: https://api.deepseek.com
+    consumers:
+      - target: litellm-env
+        vars: [DEEPSEEK_API_KEY]
+      - target: bifrost-key
+        name: deepseek-official
+
+  - item: kimi-moonshot-api-key
+    vendor: moonshot
+    base_url: https://api.kimi.com/coding
+    consumers:
+      - target: litellm-env
+        vars: [MOONSHOT_API_KEY]
+      - target: bifrost-key
+        name: kimi-moonshot-api-key
+
+  - item: nvidia-nvidia-nim-api-key
+    vendor: nvidia
+    base_url: https://integrate.api.nvidia.com
+    consumers:
+      - target: litellm-env
+        vars: [NVIDIA_NIM_API_KEY]
+      - target: bifrost-key
+        name: nvidia-nvidia-nim-api-key
+
+  - item: opencode-go-main
+    vendor: opencode
+    base_url: null
+    consumers:
+      - target: litellm-env
+        vars: [OPENCODE_GO_KEY]
+      - target: bifrost-key
+        name: opencode-go-main
+
+  - item: qiniu-qn-api-key
+    vendor: qiniu
+    base_url: https://api.qnaigc.com
+    note: bifrost 侧 key1/key2 同值（历史重复行）；litellm 侧 QN_API_KEY/QN_API_KEY2 同值
+    consumers:
+      - target: litellm-env
+        vars: [QN_API_KEY, QN_API_KEY2]
+      - target: bifrost-key
+        name: qiniu-qn-api-key
+      - target: bifrost-key
+        name: qiniu-qn-api-key2
+
+  - item: qiniu-qn-api-key2
+    vendor: qiniu
+    base_url: https://api.qnaigc.com
+    note: 备用键，当前无消费方（vault_no_consumer）
+    consumers: []
+
+  - item: qiniu-qn-api-key3
+    vendor: qiniu
+    base_url: https://api.qnaigc.com
+    consumers:
+      - target: litellm-env
+        vars: [QN_API_KEY3]
+      - target: bifrost-key
+        name: qiniu-qn-api-key3
+
+  - item: sensenova-sensenova-api-key
+    vendor: sensenova
+    base_url: https://token.sensenova.cn
+    consumers:
+      - target: litellm-env
+        vars: [SENSENOVA_API_KEY]
+      - target: bifrost-key
+        name: sensenova-sensenova-api-key
+
+  - item: sensenova-sensenova-api-key2
+    vendor: sensenova
+    base_url: https://token.sensenova.cn
+    note: litellm config 两处原明文行（glm-5.3-flash / kimi-k3-sensenova）已接线为 os.environ
+    consumers:
+      - target: litellm-env
+        vars: [SENSENOVA_API_KEY2]
+      - target: bifrost-key
+        name: sensenova-sensenova-api-key2
+
+  - item: sensenova-sensenova-a3-key
+    vendor: sensenova
+    base_url: https://token.sensenova.cn
+    consumers:
+      - target: litellm-env
+        vars: [SENSENOVA_A3_KEY]
+      - target: bifrost-key
+        name: sensenova-sensenova-a3-key
+
+  - item: sensenova-sensenova-a4-key
+    vendor: sensenova
+    base_url: https://token.sensenova.cn
+    consumers:
+      - target: litellm-env
+        vars: [SENSENOVA_A4_KEY]
+      - target: bifrost-key
+        name: sensenova-sensenova-a4-key
+
+  - item: sensenova-sensenova-a5-key
+    vendor: sensenova
+    base_url: https://token.sensenova.cn
+    consumers:
+      - target: litellm-env
+        vars: [SENSENOVA_A5_KEY]
+      - target: bifrost-key
+        name: sensenova-sensenova-a5-key
+
+  - item: sensenova-sensenova-a6-key
+    vendor: sensenova
+    base_url: https://token.sensenova.cn
+    consumers:
+      - target: litellm-env
+        vars: [SENSENOVA_A6_KEY]
+      - target: bifrost-key
+        name: sensenova-sensenova-a6-key
+
+  - item: sensenova-sensenova-a7-key
+    vendor: sensenova
+    base_url: https://token.sensenova.cn
+    consumers:
+      - target: litellm-env
+        vars: [SENSENOVA_A7_KEY]
+      - target: bifrost-key
+        name: sensenova-sensenova-a7-key
+
+  - item: xiaomi-mimo-api-key
+    vendor: xiaomi
+    base_url: https://token-plan-cn.xiaomimimo.com/anthropic
+    note: litellm 侧 XIAOMI_API_KEY 与 MIMO_API_KEY 同值；hermes .env 的 XIAOMI_API_KEY 同值
+    consumers:
+      - target: litellm-env
+        vars: [XIAOMI_API_KEY, MIMO_API_KEY]
+      - target: hermes-env
+        vars: [XIAOMI_API_KEY]
+
+  - item: xiaomi-xiaomi-api-key
+    vendor: xiaomi
+    base_url: https://token-plan-cn.xiaomimimo.com/anthropic
+    note: 备用键，当前无消费方（vault_no_consumer）
+    consumers: []
+
+  - item: magpie-gw
+    vendor: magpie
+    base_url: http://127.0.0.1:3430
+    note: magpie 网关密钥；caller 名 "bifrost-full"；bifrost 侧同名 key 同值
+    consumers:
+      - target: magpie-caller
+        name: bifrost-full
+      - target: bifrost-key
+        name: magpie-gw
+
+  - item: magpie-gw-bifrost-ro
+    vendor: magpie
+    base_url: http://127.0.0.1:3430
+    consumers:
+      - target: magpie-caller
+        name: bifrost
+
+  - item: magpie-gw-lan
+    vendor: magpie
+    base_url: http://172.17.0.1:3430
+    consumers:
+      - target: magpie-caller
+        name: Magpie
+
+# 已知缺口：明文残留但 vault 无对应 key（补录进 llm-automation 后在此收紧）
+gaps:
+  litellm_plaintext_orphans:        # litellm config 仍明文的行（key 不在 vault/bifrost）
+    - {model: glm-5.3-flash, count: 1}
+    - {model: kimi-k3-sensenova, count: 1}
+  hermes_plaintext:
+    - providers.ark.api_key         # == bifrost key ark-volces-main（未导入 vault）
+  litellm_env_unmanaged:            # env.systemd 中无 vault 覆盖的变量
+    [ALIBABA_CLOUD_API_KEY, NEWAPI_API_KEY, GITHUB_TOKEN, MAS_API_KEY, ARK_API_KEY, DATABASE_URL]
+  vault_no_consumer:
+    [qiniu-qn-api-key2, xiaomi-xiaomi-api-key]
+  known_quirks:
+    - "litellm-master-key 的 vault 值含一层包裹引号（导入自 LITELLM_MASTER_KEY=\"…\" 原行）；fleet-apply 归一化后比对/落地"
