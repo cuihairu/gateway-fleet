@@ -11,7 +11,7 @@ resolved through the persona Connect API — no master password involved).
 ```
 persona vault (llm-automation)          fleet.yaml                 consumers
 ┌──────────────────────┐   Connect API  ┌──────────────────┐  ┌─────────────────────┐
-│ 22 api_key items     │ ─────────────► │ refs + non-secret │► │ litellm env.systemd │
+│ 24 api_key items     │ ─────────────► │ refs + non-secret │► │ litellm env.systemd │
 │ (zai/kimi/sensenova/ │  unix socket   │ config (base_url, │  │ hermes .env + ${}   │
 │  xiaomi/qiniu/…)     │  + pconn token │ consumers, gaps)  │  │ bifrost/magpie:     │
 └──────────────────────┘                └──────────────────┘  │ read-only verify    │
@@ -37,15 +37,12 @@ persona connect serve --unix-socket &
 export PERSONA_CONNECT_TOKEN='pconn_…'   # scope llm-automation/api_key
 ```
 
-> **Auto-lock window (read this)** — the vault session locks itself after
-> **5 minutes of inactivity** (`PersonaService::auto_lock_timeout`, hardcoded
-> 300 s; data-plane requests refresh it, `health` does not — and the
-> `security.auto_lock_timeout` field in `config.toml` is currently *not* wired
-> into `connect serve`). While locked, the data plane **and the Connect
-> resolver** answer `503 vault_locked` until the vault is unlocked again.
-> So run `--check`/`--apply` within the window after starting serve (a fresh
-> `persona connect serve` starts unlocked). Keeping a headless serve
-> permanently unlocked is an open persona design question (backlog).
+> **Idle windows (both closed, persona ≥ 2026-11-09)** — `security.
+> auto_lock_timeout` is now wired into the runtime (`0` = never; this
+> workspace sets `0` in `config.toml`), and authenticated Connect requests
+> refresh the sensitive-operation timer (the scoped token counts as
+> re-authentication). Verified live: `--check` green after **7 min idle**
+> with `health`, the data plane and secret reads all answering.
 
 ## Usage
 
@@ -85,10 +82,15 @@ allowed plaintext).
 
 ## Known gaps (tracked in `fleet.yaml → gaps`)
 
-- 2 orphan plaintext rows in `litellm/config.yaml` (glm-5.3-flash ×1,
-  kimi-k3-sensenova ×1) — key not yet in the vault.
-- `hermes providers.ark.api_key` (== bifrost `ark-volces-main`, not imported).
-- `litellm env.systemd` vars with no vault coverage (ALIBABA/NEWAPI/GITHUB/MAS/ARK/DATABASE_URL).
+Closed 2026-11-09: the 2 orphan plaintext rows in `litellm/config.yaml`
+(both held the same key → `sensenova-sensenova-api-key3` →
+`os.environ/SENSENOVA_API_KEY3`) and `hermes providers.ark.api_key`
+(== bifrost `ark-volces-main` → imported → `${ARK_API_KEY}`); `ARK_API_KEY`
+in litellm's env is now managed too.
+
+Still open:
+
+- `litellm env.systemd` vars with no vault coverage (ALIBABA/NEWAPI/GITHUB/MAS/DATABASE_URL).
 - Two spare vault items with no consumer (`qiniu-qn-api-key2`, `xiaomi-xiaomi-api-key`).
 - `litellm-master-key` is stored in the vault with one layer of quotes (import
   artifact); `fleet_apply.normalize` strips it on compare/materialize.

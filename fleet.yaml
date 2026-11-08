@@ -151,6 +151,14 @@ providers:
       - target: bifrost-key
         name: sensenova-sensenova-api-key2
 
+  - item: sensenova-sensenova-api-key3
+    vendor: sensenova
+    base_url: https://token.sensenova.cn
+    note: litellm config 两行原孤儿明文（glm-5.3-flash / kimi-k3-sensenova 同值）已入库并接线
+    consumers:
+      - target: litellm-env
+        vars: [SENSENOVA_API_KEY3]
+
   - item: sensenova-sensenova-a3-key
     vendor: sensenova
     base_url: https://token.sensenova.cn
@@ -212,6 +220,21 @@ providers:
     note: 备用键，当前无消费方（vault_no_consumer）
     consumers: []
 
+  - item: ark-volces-main
+    vendor: volces
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+    note: 三处同值收口：litellm env ARK_API_KEY、hermes providers.ark（原明文）、bifrost 同名 key
+    consumers:
+      - target: litellm-env
+        vars: [ARK_API_KEY]
+      - target: hermes-env
+        vars: [ARK_API_KEY]
+      - target: hermes-config
+        ref: "${ARK_API_KEY}"
+        paths: [providers.ark.api_key]
+      - target: bifrost-key
+        name: ark-volces-main
+
   - item: magpie-gw
     vendor: magpie
     base_url: http://127.0.0.1:3430
@@ -238,13 +261,10 @@ providers:
 
 # 已知缺口：明文残留但 vault 无对应 key（补录进 llm-automation 后在此收紧）
 gaps:
-  litellm_plaintext_orphans:        # litellm config 仍明文的行（key 不在 vault/bifrost）
-    - {model: glm-5.3-flash, count: 1}
-    - {model: kimi-k3-sensenova, count: 1}
-  hermes_plaintext:
-    - providers.ark.api_key         # == bifrost key ark-volces-main（未导入 vault）
-  litellm_env_unmanaged:            # env.systemd 中无 vault 覆盖的变量
-    [ALIBABA_CLOUD_API_KEY, NEWAPI_API_KEY, GITHUB_TOKEN, MAS_API_KEY, ARK_API_KEY, DATABASE_URL]
+  litellm_plaintext_orphans: []     # 已收口（2026-11-09）：两行孤儿同值入库 sensenova-sensenova-api-key3 → os.environ/SENSENOVA_API_KEY3
+  hermes_plaintext: []              # 已收口（2026-11-09）：providers.ark 入库 ark-volces-main → ${ARK_API_KEY}
+  litellm_env_unmanaged:            # env.systemd 中无 vault 覆盖的变量（非 LLM 密钥或未立项收录）
+    [ALIBABA_CLOUD_API_KEY, NEWAPI_API_KEY, GITHUB_TOKEN, MAS_API_KEY, DATABASE_URL]
   vault_no_consumer:
     [qiniu-qn-api-key2, xiaomi-xiaomi-api-key]
   known_quirks:

@@ -10,7 +10,7 @@ persona Connect API 解析——**不经过主密码**）引用。
 ```
 persona 保险库 (llm-automation)        fleet.yaml                 消费方
 ┌──────────────────────┐   Connect API  ┌──────────────────┐  ┌─────────────────────┐
-│ 22 条 api_key 条目    │ ─────────────► │ 引用 + 非密配置   │► │ litellm env.systemd │
+│ 24 条 api_key 条目    │ ─────────────► │ 引用 + 非密配置   │► │ litellm env.systemd │
 │ (zai/kimi/sensenova/ │  unix socket   │ (base_url、消费方、│  │ hermes .env + ${}   │
 │  xiaomi/qiniu/…)     │  + pconn token │  gaps)           │  │ bifrost/magpie:     │
 └──────────────────────┘                └──────────────────┘  │ 只读校验            │
@@ -36,13 +36,11 @@ persona connect serve --unix-socket &
 export PERSONA_CONNECT_TOKEN='pconn_…'   # scope llm-automation/api_key
 ```
 
-> **自动锁窗口（必读）** —— 保险库会话**空闲 5 分钟即自动锁定**
-> （`PersonaService::auto_lock_timeout`，硬编码 300s；数据面请求会续命、
-> `health` 不会 —— 且 `config.toml` 的 `security.auto_lock_timeout` 字段
-> **目前并未接进** `connect serve`）。锁定期间数据面**与 Connect 解析器**
-> 一律 `503 vault_locked`，直到再次解锁。因此 `--check`/`--apply` 要在
-> 启动 serve 后的窗口内执行（刚启动的 `persona connect serve` 处于解锁态）。
-> 让 headless serve 永久保持解锁是 persona 侧的待决设计问题（待办池）。
+> **两个空闲窗口均已关闭（persona ≥ 2026-11-09）** —— `security.
+> auto_lock_timeout` 已接进运行时（`0` = 永不；本工作区 `config.toml` 已设
+> `0`），且经鉴权的 Connect 请求会刷新敏感操作计时（scoped token 即再认
+> 证）。真机验证：空闲 **7 分钟**后 `--check` 全绿，health、数据面与读密
+> 文全部正常应答。
 
 ## 用法
 
@@ -79,10 +77,14 @@ python3 -m unittest discover -s tests    # 单元测试
 
 ## 已知缺口（`fleet.yaml → gaps` 登记）
 
-- `litellm/config.yaml` 2 行孤儿明文（glm-5.3-flash ×1、kimi-k3-sensenova ×1）
-  —— key 尚未入库。
-- `hermes providers.ark.api_key`（== bifrost `ark-volces-main`，未导入）。
-- `litellm env.systemd` 无 vault 覆盖的变量（ALIBABA/NEWAPI/GITHUB/MAS/ARK/DATABASE_URL）。
+2026-11-09 已收口：`litellm/config.yaml` 的2 行孤儿明文（同值 → 入库
+`sensenova-sensenova-api-key3` → `os.environ/SENSENOVA_API_KEY3`）、
+`hermes providers.ark.api_key`（== bifrost `ark-volces-main` → 入库 →
+`${ARK_API_KEY}`）；litellm env 的 `ARK_API_KEY` 也已纳管。
+
+仍开放：
+
+- `litellm env.systemd` 无 vault 覆盖的变量（ALIBABA/NEWAPI/GITHUB/MAS/DATABASE_URL）。
 - 两条无消费方的备用条目（`qiniu-qn-api-key2`、`xiaomi-xiaomi-api-key`）。
 - `litellm-master-key` 的 vault 值带一层包裹引号（导入瑕疵）；
   `fleet_apply.normalize` 在比对/落地时剥掉。
