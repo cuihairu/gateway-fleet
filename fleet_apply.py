@@ -407,6 +407,16 @@ def check_hermes_refs(
             fail.add(f"hermes-config: {p} 不是 {ref} 引用（退回明文？）")
 
 
+API_KEY_NAME = re.compile(r"(?i)^(?:[a-z0-9]+[._-])?api[-_]?keys?$")
+
+
+def _is_secret_slot(path: str) -> bool:
+    """路径末段（剥掉 [N] 索引）是否 api_key 形键名——列表裸值按属主键判定。
+    覆盖 api_key / api-key / apikey / apiKeys / x.api_key / api_keys 等变体。"""
+    base = re.sub(r"(\[\d+\])+$", "", path)
+    return bool(API_KEY_NAME.match(base.rsplit(".", 1)[-1]))
+
+
 def scan_plaintext_leaks(
     kind: str,
     file_path: Path,
@@ -434,20 +444,23 @@ def scan_plaintext_leaks(
         elif isinstance(node, list):
             for i, v in enumerate(node):
                 walk(v, f"{path}[{i}]")
-        elif isinstance(node, str) and path.endswith("api_key"):
+        elif isinstance(node, str):
             if node.startswith(("${", "os.environ/")):
                 return
-            if kind == "litellm":
-                model = "unknown"
-                m = re.match(r".*model_list\[(\d+)\]", path)
-                if m:
-                    try:
-                        model = cfg["model_list"][int(m.group(1))].get("model_name", "unknown")
-                    except (IndexError, KeyError, AttributeError):
-                        model = "unknown"
-                plaintext_by_model[model] = plaintext_by_model.get(model, 0) + 1
-            else:
-                plaintext_by_path[path] = plaintext_by_path.get(path, 0) + 1
+            # 键名变体与列表裸值都按属主键判定 secret 槽位；
+            # vault 值等值则不分键名一律失败（任意嵌套深度）。
+            if _is_secret_slot(path):
+                if kind == "litellm":
+                    model = "unknown"
+                    m = re.match(r".*model_list\[(\d+)\]", path)
+                    if m:
+                        try:
+                            model = cfg["model_list"][int(m.group(1))].get("model_name", "unknown")
+                        except (IndexError, KeyError, AttributeError):
+                            model = "unknown"
+                    plaintext_by_model[model] = plaintext_by_model.get(model, 0) + 1
+                else:
+                    plaintext_by_path[path] = plaintext_by_path.get(path, 0) + 1
             if normalize(node) in vault_norm:
                 fail.add(f"{kind}-config: {path} 明文存放 vault 值（应改引用）")
 

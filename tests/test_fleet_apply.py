@@ -235,6 +235,42 @@ class PlaintextScanTest(unittest.TestCase):
         )
         self.assertTrue(any("补录后请收紧" in e for e in errors))
 
+    def test_variant_key_name_counts_as_slot(self):
+        cfg = {"providers": {"legacy": {"api-key": "orphan-k"}}}
+        errors = self._scan(cfg, {"other": "sk-x"}, {}, kind="hermes")
+        self.assertTrue(any("hermes.providers.legacy.api-key" in e for e in errors))
+
+    def test_variant_camel_case_vault_value_fails(self):
+        cfg = {"auth": {"apiKey": "sk-v"}}
+        errors = self._scan(cfg, {"m": "sk-v"}, {}, kind="hermes")
+        self.assertTrue(any("明文存放 vault 值" in e for e in errors))
+
+    def test_bare_list_value_under_key_family_counts(self):
+        cfg = {"api_keys": ["orphan-k1"]}
+        errors = self._scan(cfg, {"other": "sk-x"}, {}, kind="hermes")
+        self.assertTrue(any("hermes.api_keys[0]" in e for e in errors))
+
+    def test_bare_list_value_registered_ok(self):
+        cfg = {"api_keys": ["orphan-k1"]}
+        errors = self._scan(
+            cfg, {"other": "sk-x"}, {"hermes.api_keys[0]": 1}, kind="hermes"
+        )
+        self.assertEqual(errors, [])
+
+    def test_arbitrary_key_vault_equal_fails(self):
+        cfg = {"weird_spot": "sk-v"}
+        errors = self._scan(cfg, {"m": "sk-v"}, {}, kind="hermes")
+        self.assertTrue(any("明文存放 vault 值" in e for e in errors))
+
+    def test_benign_strings_not_flagged(self):
+        cfg = {
+            "model": "gpt-x",
+            "note": "sk-v is not here",
+            "url": "https://api.example.com",
+            "api_base": "os.environ/V",
+        }
+        self.assertEqual(self._scan(cfg, {"m": "sk-v"}, {}, kind="hermes"), [])
+
 
 class SecretInjectionGuardTest(unittest.TestCase):
     def test_render_rejects_newline(self):

@@ -9,7 +9,7 @@
 - [ ] 将 Bifrost 只读检查改为真正无副作用打开，并前置 schema 校验（`fleet_apply.py:269-296`）——消除 SQLite journal/WAL 副作用。
 - [ ] 把 litellm/hermes 只读目标路径声明进 `fleet.yaml` 并从配置读取（`fleet_apply.py:521-531`）——恢复单一事实源，支持跨设备。
 - [x] 将 plaintext allowlist 通用化到 hermes，并对未登记明文默认失败（`fleet_apply.py:413-483`，main 接线 `gaps.hermes_plaintext`）——关闭同型残留。（2026-11-14：hermes 未登记 api_key 明文默认失败，登记格式=配置路径；实测 ~/.hermes/config.yaml 0 错误；PlaintextScanTest 新增 5 例，47 tests OK）
-- [ ] 扩展明文扫描覆盖嵌套、列表裸值与键名变体（`fleet_apply.py:359-379`）——避免特殊结构绕过密钥检测。
+- [x] 扩展明文扫描覆盖嵌套、列表裸值与键名变体（`fleet_apply.py:405-417` `_is_secret_slot` + `walk` 全字符串叶等值检测）——避免特殊结构绕过密钥检测。（2026-11-14：api[-_]?key 变体/列表裸值按属主键判定；vault 等值不分键名；实测两份真实 config 0 误报；PlaintextScanTest 新增 6 例，53 tests OK）
 - [ ] 在 `load_fleet` 校验 providers/consumers/materials/gaps 完整 schema（`fleet_apply.py:399-421`）——把配置错误变成精确失败。
 - [ ] 为所有 resolver、SQLite、JSON 错误生成脱敏消息（`fleet_apply.py:229-235`、`269-303`）——保证错误输出不泄漏 secret 或敏感细节。
 - [ ] 包装 SecretRef 解析的所有协议异常并精确校验 field（`fleet_apply.py:219-235`）——防止协议变化导致崩溃或取错字段。
