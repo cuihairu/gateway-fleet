@@ -34,6 +34,22 @@ END = "# <<< gateway-fleet <<<"
 SAFE_VALUE = re.compile(r"^[A-Za-z0-9._:/+@-]+$")
 ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}")
+UNSAFE_SECRET = re.compile(r"[\x00\r\n]")
+
+
+class UnsafeSecretValue(ValueError):
+    """secret 值含换行/控制字符或管理块标记——落地会被拆行或注入托管块。"""
+
+
+def ensure_safe_value(item: str, value: str) -> str:
+    """env 值安全门：换行/CR/NUL 会把一行 KEY=VALUE 拆成多行（可注入伪造行），
+    管理块标记形态同理；API key 里它们都不合法，一律拒绝。"""
+    if UNSAFE_SECRET.search(value):
+        raise UnsafeSecretValue(f"{item}: 值含换行/控制字符（会拆行/注入），拒绝落地")
+    for mark in (BEGIN, END):
+        if mark in value:
+            raise UnsafeSecretValue(f"{item}: 值含管理块标记形态，拒绝落地")
+    return value
 
 
 # ---------- 基础 ----------
@@ -90,7 +106,12 @@ def validate_material_path(raw: str, name: str) -> Path:
 
 
 def render_value(value: str) -> str:
-    """env 行的值序列化：安全字符直写，否则双引号包裹（systemd/dotenv 同解）。"""
+    """env 行的值序列化：安全字符直写，否则双引号包裹（systemd/dotenv 同解）。
+
+    引号包裹不改写换行——含换行/标记的值在这里是最后防线，直接拒绝。
+    """
+    if UNSAFE_SECRET.search(value) or BEGIN in value or END in value:
+        raise UnsafeSecretValue("值含换行/控制字符或管理块标记，拒绝序列化")
     if SAFE_VALUE.match(value):
         return value
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -142,6 +163,8 @@ def merge_managed_block(
     - 块外同名行：归一值一致 → 移入块（所有权收口）；不一致 → 冲突，除非 force；
     - 已在块内且值一致 → 不动。
     """
+    for k, v in wanted.items():
+        ensure_safe_value(k, v)
     block_vars, outside_vars, outside_lines, _ = split_managed(text)
     changes: list[str] = []
     conflicts: list[str] = []
@@ -254,7 +277,12 @@ class ConnectResolver:
         value = variant.get("api_key")
         if not isinstance(value, str) or not value:
             raise ResolveError(f"{item}: 详情里没有 api_key 字段（形态：{sorted(data)}）")
-        return normalize(value)
+        value = normalize(value)
+        try:
+            ensure_safe_value(item, value)
+        except UnsafeSecretValue as e:
+            raise ResolveError(str(e)) from e
+        return value
 
 
 # ---------- 各类消费方校验 ----------
@@ -501,7 +529,14 @@ def main(argv: list[str] | None = None) -> int:
         for name, spec in mats.items():
             path = expand_path(spec["path"])
             old = path.read_text(encoding="utf-8") if path.exists() else ""
-            new, changes, conflicts = merge_managed_block(old, wanted[name], args.force)
+            try:
+                new, changes, conflicts = merge_managed_block(
+                    old, wanted[name], args.force
+                )
+            except UnsafeSecretValue as e:
+                print(f"[apply] {name}: FAIL {e}", file=sys.stderr)
+                fail.add(f"{name}: {e}")
+                continue
             if new != old:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(new, encoding="utf-8")

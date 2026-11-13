@@ -175,6 +175,33 @@ class PlaintextScanTest(unittest.TestCase):
         self.assertTrue(any("补录后请收紧" in e for e in errors))
 
 
+class SecretInjectionGuardTest(unittest.TestCase):
+    def test_render_rejects_newline(self):
+        with self.assertRaises(fa.UnsafeSecretValue):
+            fa.render_value("a\nb")
+
+    def test_render_rejects_carriage_return_and_nul(self):
+        for bad in ("a\rb", "a\x00b"):
+            with self.assertRaises(fa.UnsafeSecretValue):
+                fa.render_value(bad)
+
+    def test_render_rejects_block_markers(self):
+        with self.assertRaises(fa.UnsafeSecretValue):
+            fa.render_value(fa.END)
+        with self.assertRaises(fa.UnsafeSecretValue):
+            fa.render_value(fa.BEGIN)
+
+    def test_merge_rejects_block_escape_via_newline(self):
+        evil = 'x\n# <<< gateway-fleet <<<\nEVIL=1\n# >>> gateway-fleet managed (fleet-apply) >>>'
+        with self.assertRaises(fa.UnsafeSecretValue):
+            fa.merge_managed_block("", {"A": evil}, force=False)
+
+    def test_safe_special_chars_still_quoted(self):
+        self.assertEqual(fa.render_value("a b"), '"a b"')
+        new, _, _ = fa.merge_managed_block("", {"A": "sk-abc_1.2:x/y+z"}, force=False)
+        self.assertIn("A=sk-abc_1.2:x/y+z\n", new)
+
+
 class MaterialPathValidationTest(unittest.TestCase):
     def test_rejects_relative_path(self):
         with self.assertRaises(SystemExit):
