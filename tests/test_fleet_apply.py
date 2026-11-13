@@ -3,6 +3,7 @@
 
 运行：python3 -m unittest discover -s tests -v
 """
+import os
 import sys
 import tempfile
 import unittest
@@ -297,6 +298,91 @@ class SecretInjectionGuardTest(unittest.TestCase):
         self.assertEqual(fa.render_value("a b"), '"a b"')
         new, _, _ = fa.merge_managed_block("", {"A": "sk-abc_1.2:x/y+z"}, force=False)
         self.assertIn("A=sk-abc_1.2:x/y+z\n", new)
+
+
+class ApplyMaterialTest(unittest.TestCase):
+    def _spec(self, path: Path, mode: str = "0600") -> dict:
+        return {"path": str(path), "mode": mode}
+
+    def test_creates_new_file_0600_with_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            changes, conflicts = fa.apply_material(
+                "m", self._spec(path), {"A": "v1"}, force=False
+            )
+            self.assertEqual(conflicts, [])
+            self.assertTrue(changes)
+            self.assertTrue(path.exists())
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            block_vars, _, _, found = fa.split_managed(path.read_text(encoding="utf-8"))
+            self.assertTrue(found)
+            self.assertEqual(block_vars["A"], "v1")
+
+    def test_outside_content_preserved_and_mode_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            path.write_text("KEEP=1\n", encoding="utf-8")
+            os.chmod(path, 0o600)
+            fa.apply_material("m", self._spec(path), {"A": "v1"}, force=False)
+            text = path.read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("KEEP=1\n"))
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_conflict_keeps_outside_value_and_reports(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            path.write_text("A=different\nKEEP=1\n", encoding="utf-8")
+            changes, conflicts = fa.apply_material(
+                "m", self._spec(path), {"A": "persona"}, force=False
+            )
+            self.assertEqual(len(conflicts), 1)
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("A=different", text)
+            self.assertIn("KEEP=1", text)
+
+    def test_snapshot_written_when_content_changes(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            path.write_text(fa.render_block({"A": "old"}) + "KEEP=1\n", encoding="utf-8")
+            os.chmod(path, 0o600)
+            fa.apply_material("m", self._spec(path), {"A": "new"}, force=False)
+            snap = path.with_name(path.name + ".fleet-bak")
+            self.assertTrue(snap.exists())
+            self.assertIn("A=old", snap.read_text(encoding="utf-8"))
+            self.assertEqual(snap.stat().st_mode & 0o777, 0o600)
+            self.assertIn("A=new", path.read_text(encoding="utf-8"))
+
+    def test_no_change_writes_no_snapshot(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            fa.apply_material("m", self._spec(path), {"A": "v1"}, force=False)
+            fa.apply_material("m", self._spec(path), {"A": "v1"}, force=False)
+            snap = path.with_name(path.name + ".fleet-bak")
+            self.assertFalse(snap.exists())
+
+    def test_no_temp_file_left_behind(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            fa.apply_material("m", self._spec(path), {"A": "v1"}, force=False)
+            leftovers = [p for p in Path(d).iterdir() if ".tmp-" in p.name]
+            self.assertEqual(leftovers, [])
+
+    def test_lock_timeout_when_held_by_other(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            lock_path = path.with_name(path.name + ".fleet-lock")
+            with open(lock_path, "w") as holder:
+                import fcntl
+
+                fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                old_retry = fa.LOCK_RETRY
+                fa.LOCK_RETRY = 0
+                try:
+                    with self.assertRaises(RuntimeError):
+                        fa.apply_material("m", self._spec(path), {"A": "v1"}, force=False)
+                finally:
+                    fa.LOCK_RETRY = old_retry
+                    fcntl.flock(holder, fcntl.LOCK_UN)
 
 
 class SanitizeTest(unittest.TestCase):

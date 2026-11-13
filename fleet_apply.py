@@ -17,12 +17,14 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
 import socket
 import sqlite3
 import sys
+import time
 import http.client
 from pathlib import Path
 from typing import Any
@@ -519,6 +521,62 @@ def scan_plaintext_leaks(
                 )
 
 
+# ---------- 材料写入（锁 + 快照 + 原子替换） ----------
+
+LOCK_RETRY = 50  # × 0.1s——并发实例争锁最多等 5s
+
+
+def apply_material(
+    name: str, spec: dict[str, Any], wanted: dict[str, str], force: bool
+) -> tuple[list[str], list[str]]:
+    """读-改-写单个材料，返回 (变更说明, 冲突说明)。
+
+    - 文件锁：同目录 sidecar `.fleet-lock`（flock 非阻塞重试）防并发实例 lost update；
+    - 变更前快照：`.fleet-bak`（同 mode）保留整份旧内容，可回滚；
+    - 原子写入：临时文件 + fsync + os.replace——读方永远见不到半写文件。
+    """
+    path = validate_material_path(spec["path"], name)  # 用前再校验（防 TOCTOU）
+    mode = int(spec.get("mode", "0600"), 8)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(path.name + ".fleet-lock")
+    with open(lock_path, "a", encoding="utf-8") as lock:
+        os.chmod(lock_path, 0o600)
+        for _ in range(LOCK_RETRY):
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            raise RuntimeError(f"文件锁等待超时 {lock_path}（另一实例在运行？）")
+        old = path.read_text(encoding="utf-8") if path.exists() else ""
+        # 值不安全/空清单 → ValueError；锁竞争 → RuntimeError（均由调用方收口）
+        new, changes, conflicts = merge_managed_block(old, wanted, force)
+        if new != old:
+            if old:
+                snap = path.with_name(path.name + ".fleet-bak")
+                snap.write_text(old, encoding="utf-8")
+                os.chmod(snap, mode)
+            tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+            with open(tmp, "w", encoding="utf-8") as t:
+                t.write(new)
+                t.flush()
+                os.fsync(t.fileno())
+            os.chmod(tmp, mode)
+            os.replace(tmp, path)
+            try:  # 目录项落盘（尽力而为）
+                dfd = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(dfd)
+                finally:
+                    os.close(dfd)
+            except OSError:
+                pass
+        if path.exists():
+            os.chmod(path, mode)
+        return changes, conflicts
+
+
 # ---------- 主流程 ----------
 
 def load_fleet(path: Path) -> dict[str, Any]:
@@ -602,21 +660,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.apply:
         for name, spec in mats.items():
-            path = expand_path(spec["path"])
-            old = path.read_text(encoding="utf-8") if path.exists() else ""
             try:
-                new, changes, conflicts = merge_managed_block(
-                    old, wanted[name], args.force
+                changes, conflicts = apply_material(
+                    name, spec, wanted[name], args.force
                 )
-            except ValueError as e:  # UnsafeSecretValue / 空清单拒写
-                print(f"[apply] {name}: FAIL {e}", file=sys.stderr)
+            except (ValueError, RuntimeError) as e:  # 不安全值 / 空清单 / 锁超时
+                print(f"[apply] {name}: FAIL {sanitize(str(e))}", file=sys.stderr)
                 fail.add(f"{name}: {e}")
                 continue
-            if new != old:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(new, encoding="utf-8")
-            if path.exists():
-                os.chmod(path, int(spec.get("mode", "0600"), 8))
             for c in changes:
                 print(f"[apply] {name}: {c}")
             for c in conflicts:
