@@ -61,6 +61,17 @@ python3 -m unittest discover -s tests    # 单元测试
 - **`hermes .env`** —— 托管块含 `GLM_API_KEY`、`XIAOMI_API_KEY`、
   `BIFROST_VK_MAIN`、`LITELLM_MASTER_KEY`；hermes 加载配置时重读 `.env`。
 
+### 写入安全
+
+- **文件锁** —— `--apply` 动任何文件前先在 `<材料>.fleet-lock` 上取 `flock`，
+  并发实例排队而不是交错写（无 lost update）。
+- **变更前快照** —— 改动前把整份旧内容拷到 `<材料>.fleet-bak`（同 mode），
+  回滚即还原该文件。
+- **原子替换** —— 内容先写同目录临时文件、`fsync` 后用 `os.replace` 覆盖，
+  读方永远看不到半写文件。
+- **拒绝清空** —— 重组后没有任何密钥可写时（`fleet.yaml` 有问题）保持托管块
+  原样，并把该材料报成失败，绝不把块抹空。
+
 只读校验目标：**bifrost** `config_keys` / `governance_virtual_keys`、
 **magpie** `caller-keys.json`、**hermes config** 的 `${…}` 引用，以及
 `litellm/config.yaml` + `hermes/config.yaml` 的**明文扫描**（任何 api_key

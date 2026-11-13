@@ -65,6 +65,21 @@ never key values.
 - **`hermes .env`** — managed block with `GLM_API_KEY`, `XIAOMI_API_KEY`,
   `BIFROST_VK_MAIN`, `LITELLM_MASTER_KEY`. hermes re-reads `.env` on config load.
 
+### Write safety
+
+- **Lock** — `--apply` takes a `flock` on a sidecar `<material>.fleet-lock`
+  before touching anything, so concurrent instances queue instead of
+  interleaving (no lost update).
+- **Snapshot** — the whole previous content is copied to
+  `<material>.fleet-bak` (same `mode`) before any change; rollback is restoring
+  that file.
+- **Atomic replace** — content goes to a temp file in the same directory, is
+  `fsync`-ed, then moved over the material with `os.replace`; readers never see
+  a half-written file.
+- **Refuse to empty** — if the merge ends up with no secrets to write (bad
+  `fleet.yaml`) the block is left untouched and the material reported as a
+  failure instead of the block being wiped.
+
 Read-only verification targets: **bifrost** `config_keys` / `governance_virtual_keys`,
 **magpie** `caller-keys.json`, **hermes config** `${…}` refs, and a
 **plaintext scan** of `litellm/config.yaml` + `hermes/config.yaml` (any api_key
