@@ -10,6 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import yaml  # noqa: E402
+
 import fleet_apply as fa  # noqa: E402
 
 
@@ -175,10 +177,19 @@ class PlaintextScanTest(unittest.TestCase):
 
 class FleetYamlSchemaTest(unittest.TestCase):
     def test_repo_fleet_yaml_loads(self):
-        cfg = fa.load_fleet(Path(__file__).resolve().parent.parent / "fleet.yaml")
-        self.assertEqual(len(cfg["providers"]), 22)
+        repo = Path(__file__).resolve().parent.parent
+        raw = yaml.safe_load((repo / "fleet.yaml").read_text(encoding="utf-8"))
+        cfg = fa.load_fleet(repo / "fleet.yaml")
+        # 数量从 fleet.yaml 推导（扩 vault 不再破测试）；硬性约束单独断言
+        self.assertEqual(len(cfg["providers"]), len(raw["providers"]))
+        self.assertEqual(len(cfg["providers"]), 24)  # 2026-11-14 现状，人工核对
+        items = [p["item"] for p in cfg["providers"]]
+        self.assertEqual(len(set(items)), len(items))  # item 唯一
         self.assertIn("litellm-env", cfg["materials"])
         self.assertIn("hermes-env", cfg["materials"])
+        # gaps 登记的无消费方条目必须真实存在
+        for name in (cfg.get("gaps") or {}).get("vault_no_consumer", []):
+            self.assertIn(name, items)
 
 
 if __name__ == "__main__":
