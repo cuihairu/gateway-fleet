@@ -4,7 +4,7 @@
 - [ ] 为 `--apply` 增加原子写入、文件锁与变更前快照（`fleet_apply.py:471-480`）——消除半写/lost update 和不可回滚风险。
 - [x] 校验并拒绝材料路径穿越、绝对路径越界与符号链接（`fleet_apply.py:70-89` `validate_material_path`，`load_fleet` 接线）——防止恶意或错误 YAML 写到授权目录外。（2026-11-14：拒绝相对路径/`..`/软链目标/软链祖先；MaterialPathValidationTest 6 例，33 tests OK）
 - [x] 禁止含换行/标记形态的 secret 进入 env 值，或改为安全编码（`fleet_apply.py:34-52` `ensure_safe_value` + `render_value` 序列化防线 + `merge_managed_block`/`resolve` 接线）——阻断管理块注入。（2026-11-14：换行/CR/NUL/块标记一律拒绝；SecretInjectionGuardTest 5 例，38 tests OK）
-- [ ] 改造托管块重组策略，保证冲突和失败场景保留完整原内容（`fleet_apply.py:123-159`）——避免清空块造成旧 secret 丢失。
+- [x] 改造托管块重组策略，保证冲突和失败场景保留完整原内容（`fleet_apply.py:160-225`）——避免清空块造成旧 secret 丢失。（2026-11-14：空清单拒写、冲突变量保留块内旧值、清单收缩变量原值保留并报告；ManagedBlockTest 新增 5 例，42 tests OK）
 - [ ] 让 `--check` 检测重复、未闭合、错序和重置过的管理块（`fleet_apply.py:88-107`）——消除重置标记掩盖漂移的绕过路径。
 - [ ] 将 Bifrost 只读检查改为真正无副作用打开，并前置 schema 校验（`fleet_apply.py:269-296`）——消除 SQLite journal/WAL 副作用。
 - [ ] 把 litellm/hermes 只读目标路径声明进 `fleet.yaml` 并从配置读取（`fleet_apply.py:521-531`）——恢复单一事实源，支持跨设备。

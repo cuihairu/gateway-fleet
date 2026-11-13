@@ -115,6 +115,38 @@ class ManagedBlockTest(unittest.TestCase):
         self.assertEqual(changes, [])
         self.assertEqual(conflicts, [])
 
+    def test_conflict_with_existing_block_preserves_block_value(self):
+        text = fa.render_block({"A": "oldmanaged"}) + "A=different\nKEEP=1\n"
+        new, changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=False)
+        block_vars = fa.parse_env_lines(new.split(fa.BEGIN)[1].split(fa.END)[0])
+        self.assertEqual(block_vars.get("A"), "oldmanaged")   # 块不清空
+        self.assertIn("A=different", new)                     # 块外原值继续生效
+        self.assertNotIn("A=persona", new)                    # persona 值不写入
+        self.assertIn("KEEP=1", new)
+        self.assertTrue(any("保留" in c for c in conflicts))
+
+    def test_block_var_absent_from_wanted_preserved(self):
+        text = fa.render_block({"OLD": "secret1", "A": "v1"})
+        new, changes, _ = fa.merge_managed_block(text, {"A": "v1"}, force=False)
+        block_vars = fa.parse_env_lines(new.split(fa.BEGIN)[1].split(fa.END)[0])
+        self.assertEqual(block_vars.get("OLD"), "secret1")    # 清单收缩不删旧 secret
+        self.assertEqual(block_vars.get("A"), "v1")
+        self.assertTrue(any("OLD" in c for c in changes))
+
+    def test_empty_wanted_refused(self):
+        text = fa.render_block({"A": "v1"})
+        with self.assertRaises(ValueError):
+            fa.merge_managed_block(text, {}, force=False)
+        # 原文本不受影响
+        self.assertIn("A=v1", text)
+
+    def test_preserved_var_text_stable_across_runs(self):
+        first, _, _ = fa.merge_managed_block(
+            fa.render_block({"OLD": "s1"}), {"A": "v"}, force=False
+        )
+        second, _, _ = fa.merge_managed_block(first, {"A": "v"}, force=False)
+        self.assertEqual(first, second)
+
 
 class YamlPathTest(unittest.TestCase):
     NODE = {"model": {"api_key": "x"}, "fallback_providers": [{"api_key": "y"}]}

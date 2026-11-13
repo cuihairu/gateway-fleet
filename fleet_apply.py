@@ -161,8 +161,13 @@ def merge_managed_block(
     """把 wanted 写入托管块。返回 (新文本, 变更说明, 冲突说明)。
 
     - 块外同名行：归一值一致 → 移入块（所有权收口）；不一致 → 冲突，除非 force；
-    - 已在块内且值一致 → 不动。
+    - 已在块内且值一致 → 不动；
+    - 冲突变量若已有托管旧值、或块内变量不在本次清单 → 原值保留在块内不删，
+      报告提请人工处理——任何重组场景都不得清空块造成旧 secret 丢失。
     """
+    if not wanted:
+        # 空清单重写会把整块清空（历史 secret 全部丢失）——拒绝，提请检查 fleet.yaml。
+        raise ValueError("wanted 为空：拒绝重写托管块（会丢失块内旧内容）")
     for k, v in wanted.items():
         ensure_safe_value(k, v)
     block_vars, outside_vars, outside_lines, _ = split_managed(text)
@@ -188,9 +193,22 @@ def merge_managed_block(
             continue
         kept_outside.append(line)
 
-    # 冲突变量不进块（块外原值继续生效），其余照写
     conflict_names = {c.split(":", 1)[0] for c in conflicts}
-    final_wanted = {k: v for k, v in wanted.items() if k not in conflict_names}
+    # 保底重组：块内旧变量不因清单收缩/冲突而消失
+    final_wanted: dict[str, str] = {}
+    for k, v in block_vars.items():
+        if k in wanted:
+            if k in conflict_names:
+                final_wanted[k] = v  # 旧托管值留块内，块外新值继续生效
+                conflicts.append(
+                    f"{k}: 块内旧值保留待人工处理（块外另有不同值，未写入 persona 值）"
+                )
+            continue  # 在清单且无冲突 → 由 wanted 决定
+        final_wanted[k] = v
+        changes.append(f"{k}: 不在本次清单，块内旧值保留")
+    for k, v in wanted.items():
+        if k not in conflict_names:
+            final_wanted[k] = v
     # 块内已一致的变量不产生变更说明
     for k, v in final_wanted.items():
         if k in block_vars and normalize(block_vars[k]) == normalize(v):
@@ -533,7 +551,7 @@ def main(argv: list[str] | None = None) -> int:
                 new, changes, conflicts = merge_managed_block(
                     old, wanted[name], args.force
                 )
-            except UnsafeSecretValue as e:
+            except ValueError as e:  # UnsafeSecretValue / 空清单拒写
                 print(f"[apply] {name}: FAIL {e}", file=sys.stderr)
                 fail.add(f"{name}: {e}")
                 continue
