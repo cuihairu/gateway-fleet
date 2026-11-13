@@ -262,7 +262,7 @@ providers:
 # 已知缺口：明文残留但 vault 无对应 key（补录进 llm-automation 后在此收紧）
 gaps:
   litellm_plaintext_orphans: []     # 已收口（2026-11-09）：两行孤儿同值入库 sensenova-sensenova-api-key3 → os.environ/SENSENOVA_API_KEY3
-  hermes_plaintext: []              # 已收口（2026-11-09）：providers.ark 入库 ark-volces-main → ${ARK_API_KEY}
+  hermes_plaintext: []              # 已收口（2026-11-09）：providers.ark 入库 ark-volces-main → ${ARK_API_KEY}；登记格式 = hermes 配置路径（如 hermes.providers.x.api_key），未登记明文默认失败
   litellm_env_unmanaged:            # env.systemd 中无 vault 覆盖的变量（非 LLM 密钥或未立项收录）
     [ALIBABA_CLOUD_API_KEY, NEWAPI_API_KEY, GITHUB_TOKEN, MAS_API_KEY, DATABASE_URL]
   vault_no_consumer:

@@ -415,7 +415,9 @@ def scan_plaintext_leaks(
     fail: CheckFailure,
 ) -> None:
     """配置文件明文扫描：任何 api_key 明文 == vault 值 → 失败；
-    孤儿明文按 model 允许数核对（gaps.litellm_plaintext_orphans）。"""
+    孤儿明文按登记数核对——litellm 按 model（gaps.litellm_plaintext_orphans），
+    其余 kind（hermes 等）按配置路径（gaps.hermes_plaintext 等），
+    未登记的明文默认失败（防同型残留绕过）。"""
     try:
         cfg = yaml.safe_load(file_path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as e:
@@ -423,6 +425,7 @@ def scan_plaintext_leaks(
         return
     vault_norm = {normalize(v) for v in vault_values.values()}
     plaintext_by_model: dict[str, int] = {}
+    plaintext_by_path: dict[str, int] = {}
 
     def walk(node: Any, path: str) -> None:
         if isinstance(node, dict):
@@ -434,15 +437,17 @@ def scan_plaintext_leaks(
         elif isinstance(node, str) and path.endswith("api_key"):
             if node.startswith(("${", "os.environ/")):
                 return
-            model = "unknown"
             if kind == "litellm":
+                model = "unknown"
                 m = re.match(r".*model_list\[(\d+)\]", path)
                 if m:
                     try:
                         model = cfg["model_list"][int(m.group(1))].get("model_name", "unknown")
                     except (IndexError, KeyError, AttributeError):
                         model = "unknown"
-            plaintext_by_model[model] = plaintext_by_model.get(model, 0) + 1
+                plaintext_by_model[model] = plaintext_by_model.get(model, 0) + 1
+            else:
+                plaintext_by_path[path] = plaintext_by_path.get(path, 0) + 1
             if normalize(node) in vault_norm:
                 fail.add(f"{kind}-config: {path} 明文存放 vault 值（应改引用）")
 
@@ -459,6 +464,21 @@ def scan_plaintext_leaks(
             if got < allowed:
                 fail.add(
                     f"litellm-config: model {model} 明文行 {got} < 登记孤儿数 {allowed}（补录后请收紧 gaps）"
+                )
+    else:
+        # 其余只读配置：未登记的 api_key 明文默认失败（登记格式 = 配置路径）
+        for path, count in plaintext_by_path.items():
+            allowed = orphan_allow.get(path, 0)
+            if count > allowed:
+                fail.add(
+                    f"{kind}-config: {path} 未登记明文 {count} 处（入库后请改引用，"
+                    f"或登记到 gaps 再收紧）"
+                )
+        for path, allowed in orphan_allow.items():
+            got = plaintext_by_path.get(path, 0)
+            if got < allowed:
+                fail.add(
+                    f"{kind}-config: {path} 明文 {got} < 登记数 {allowed}（补录后请收紧 gaps）"
                 )
 
 
@@ -601,16 +621,26 @@ def main(argv: list[str] | None = None) -> int:
                 check_hermes_refs(c["paths"], c["ref"], hermes_cfg_path, fail)
 
     # 明文泄漏扫描（两类配置）
+    gaps = cfg.get("gaps") or {}
     allow = {
         e["model"]: e["count"]
-        for e in (cfg.get("gaps") or {}).get("litellm_plaintext_orphans", [])
+        for e in gaps.get("litellm_plaintext_orphans", [])
     }
     scan_plaintext_leaks(
         "litellm", expand_path("~/.local/share/litellm/config.yaml"), values, allow, fail
     )
     if hermes_cfg_path is None:
         hermes_cfg_path = expand_path("~/.hermes/config.yaml")
-    scan_plaintext_leaks("hermes", hermes_cfg_path, values, {}, fail)
+    # hermes 登记格式：路径字符串（每条记 1 处）或 {path, count}
+    hermes_allow: dict[str, int] = {}
+    for e in gaps.get("hermes_plaintext", []):
+        if isinstance(e, str):
+            hermes_allow[e] = hermes_allow.get(e, 0) + 1
+        elif isinstance(e, dict) and isinstance(e.get("path"), str):
+            hermes_allow[e["path"]] = hermes_allow.get(e["path"], 0) + int(
+                e.get("count", 1)
+            )
+    scan_plaintext_leaks("hermes", hermes_cfg_path, values, hermes_allow, fail)
 
     if fail.errors:
         print(f"[check] FAIL ({len(fail.errors)}):")

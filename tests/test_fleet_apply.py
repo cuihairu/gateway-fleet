@@ -163,7 +163,7 @@ class YamlPathTest(unittest.TestCase):
 
 
 class PlaintextScanTest(unittest.TestCase):
-    def _scan(self, cfg: dict, vault: dict, allow: dict):
+    def _scan(self, cfg: dict, vault: dict, allow: dict, kind: str = "litellm"):
         with tempfile.NamedTemporaryFile(
             "w", suffix=".yaml", delete=False
         ) as f:
@@ -173,7 +173,7 @@ class PlaintextScanTest(unittest.TestCase):
             path = Path(f.name)
         try:
             fail = fa.CheckFailure()
-            fa.scan_plaintext_leaks("litellm", path, vault, allow, fail)
+            fa.scan_plaintext_leaks(kind, path, vault, allow, fail)
             return fail.errors
         finally:
             path.unlink()
@@ -204,6 +204,35 @@ class PlaintextScanTest(unittest.TestCase):
     def test_orphan_below_registered_fails(self):
         cfg = {"model_list": []}
         errors = self._scan(cfg, {"other": "sk-x"}, {"m1": 1})
+        self.assertTrue(any("补录后请收紧" in e for e in errors))
+
+    def test_hermes_unregistered_plaintext_fails(self):
+        cfg = {"providers": {"legacy": {"api_key": "orphan-hermes-key"}}}
+        errors = self._scan(cfg, {"other": "sk-x"}, {}, kind="hermes")
+        self.assertTrue(any("未登记明文" in e for e in errors))
+        self.assertTrue(any("hermes.providers.legacy.api_key" in e for e in errors))
+
+    def test_hermes_registered_plaintext_ok(self):
+        cfg = {"providers": {"legacy": {"api_key": "orphan-hermes-key"}}}
+        errors = self._scan(
+            cfg, {"other": "sk-x"}, {"hermes.providers.legacy.api_key": 1}, kind="hermes"
+        )
+        self.assertEqual(errors, [])
+
+    def test_hermes_env_ref_ok(self):
+        cfg = {"providers": {"ark": {"api_key": "${ARK_API_KEY}"}}}
+        self.assertEqual(self._scan(cfg, {"ark": "sk-v"}, {}, kind="hermes"), [])
+
+    def test_hermes_vault_value_plaintext_fails(self):
+        cfg = {"model": {"api_key": "sk-v"}}
+        errors = self._scan(cfg, {"m": "sk-v"}, {}, kind="hermes")
+        self.assertTrue(any("明文存放 vault 值" in e for e in errors))
+
+    def test_hermes_below_registered_fails(self):
+        cfg = {"providers": {}}
+        errors = self._scan(
+            cfg, {"other": "sk-x"}, {"hermes.providers.old.api_key": 1}, kind="hermes"
+        )
         self.assertTrue(any("补录后请收紧" in e for e in errors))
 
 

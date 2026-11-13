@@ -8,7 +8,7 @@
 - [ ] 让 `--check` 检测重复、未闭合、错序和重置过的管理块（`fleet_apply.py:88-107`）——消除重置标记掩盖漂移的绕过路径。
 - [ ] 将 Bifrost 只读检查改为真正无副作用打开，并前置 schema 校验（`fleet_apply.py:269-296`）——消除 SQLite journal/WAL 副作用。
 - [ ] 把 litellm/hermes 只读目标路径声明进 `fleet.yaml` 并从配置读取（`fleet_apply.py:521-531`）——恢复单一事实源，支持跨设备。
-- [ ] 将 plaintext allowlist 通用化到 hermes，并对未登记明文默认失败（`fleet_apply.py:342-394`）——关闭同型残留。
+- [x] 将 plaintext allowlist 通用化到 hermes，并对未登记明文默认失败（`fleet_apply.py:413-483`，main 接线 `gaps.hermes_plaintext`）——关闭同型残留。（2026-11-14：hermes 未登记 api_key 明文默认失败，登记格式=配置路径；实测 ~/.hermes/config.yaml 0 错误；PlaintextScanTest 新增 5 例，47 tests OK）
 - [ ] 扩展明文扫描覆盖嵌套、列表裸值与键名变体（`fleet_apply.py:359-379`）——避免特殊结构绕过密钥检测。
 - [ ] 在 `load_fleet` 校验 providers/consumers/materials/gaps 完整 schema（`fleet_apply.py:399-421`）——把配置错误变成精确失败。
 - [ ] 为所有 resolver、SQLite、JSON 错误生成脱敏消息（`fleet_apply.py:229-235`、`269-303`）——保证错误输出不泄漏 secret 或敏感细节。
