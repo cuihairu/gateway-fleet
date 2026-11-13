@@ -2,7 +2,7 @@
 ## Codex 深审发现（2026-11-13，luna profile 近5 commit 审核，5C/10M/7m，待修）
 
 - [ ] 为 `--apply` 增加原子写入、文件锁与变更前快照（`fleet_apply.py:471-480`）——消除半写/lost update 和不可回滚风险。
-- [ ] 校验并拒绝材料路径穿越、绝对路径越界与符号链接（`fleet_apply.py:66-69`）——防止恶意或错误 YAML 写到授权目录外。
+- [x] 校验并拒绝材料路径穿越、绝对路径越界与符号链接（`fleet_apply.py:70-89` `validate_material_path`，`load_fleet` 接线）——防止恶意或错误 YAML 写到授权目录外。（2026-11-14：拒绝相对路径/`..`/软链目标/软链祖先；MaterialPathValidationTest 6 例，33 tests OK）
 - [ ] 禁止含换行/标记形态的 secret 进入 env 值，或改为安全编码（`fleet_apply.py:70-82`）——阻断管理块注入。
 - [ ] 改造托管块重组策略，保证冲突和失败场景保留完整原内容（`fleet_apply.py:123-159`）——避免清空块造成旧 secret 丢失。
 - [ ] 让 `--check` 检测重复、未闭合、错序和重置过的管理块（`fleet_apply.py:88-107`）——消除重置标记掩盖漂移的绕过路径。

@@ -67,6 +67,28 @@ def expand_path(text: str) -> Path:
     return Path(os.path.expanduser(expand_vars(text)))
 
 
+def validate_material_path(raw: str, name: str) -> Path:
+    """材料路径必须落在授权位置内：展开后为绝对路径、无 .. 穿越、
+    目标与已存在的祖先目录都不是符号链接。
+
+    materials.path 是 fleet-apply 唯一授权的写入目标；穿越、绝对路径越界或
+    软链重定向都会把 0600 密钥写到声明位置之外，所以在 load 阶段一次拒绝。
+    """
+    p = expand_path(raw)
+    if not p.is_absolute():
+        raise SystemExit(
+            f"fleet.yaml: material {name}: 展开后必须是绝对路径，得到 {p}"
+        )
+    if ".." in p.parts:
+        raise SystemExit(f"fleet.yaml: material {name}: 路径含 ..（拒绝穿越）")
+    if p.is_symlink():
+        raise SystemExit(f"fleet.yaml: material {name}: 目标是符号链接 {p}")
+    for anc in p.parents:
+        if anc.is_symlink():
+            raise SystemExit(f"fleet.yaml: material {name}: 祖先目录是符号链接 {anc}")
+    return p
+
+
 def render_value(value: str) -> str:
     """env 行的值序列化：安全字符直写，否则双引号包裹（systemd/dotenv 同解）。"""
     if SAFE_VALUE.match(value):
@@ -418,6 +440,13 @@ def load_fleet(path: Path) -> dict[str, Any]:
                 "magpie-caller",
             }:
                 raise SystemExit(f"fleet.yaml: {p['item']} 未知 target {c.get('target')!r}")
+    mats = cfg.get("materials") or {}
+    if not isinstance(mats, dict) or not mats:
+        raise SystemExit("fleet.yaml: materials 必须是非空映射")
+    for name, spec in mats.items():
+        if not isinstance(spec, dict) or not isinstance(spec.get("path"), str):
+            raise SystemExit(f"fleet.yaml: material {name}: 需要 path 字符串")
+        validate_material_path(spec["path"], name)
     return cfg
 
 

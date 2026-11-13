@@ -175,6 +175,44 @@ class PlaintextScanTest(unittest.TestCase):
         self.assertTrue(any("补录后请收紧" in e for e in errors))
 
 
+class MaterialPathValidationTest(unittest.TestCase):
+    def test_rejects_relative_path(self):
+        with self.assertRaises(SystemExit):
+            fa.validate_material_path("relative/env.systemd", "m")
+
+    def test_rejects_dotdot_traversal(self):
+        with self.assertRaises(SystemExit):
+            fa.validate_material_path("/opt/app/../../etc/env.systemd", "m")
+
+    def test_rejects_symlink_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            real = Path(d) / "real.env"
+            real.write_text("")
+            link = Path(d) / "link.env"
+            link.symlink_to(real)
+            with self.assertRaises(SystemExit):
+                fa.validate_material_path(str(link), "m")
+
+    def test_rejects_symlink_ancestor(self):
+        with tempfile.TemporaryDirectory() as d:
+            realdir = Path(d) / "realdir"
+            realdir.mkdir()
+            linkdir = Path(d) / "linkdir"
+            linkdir.symlink_to(realdir, target_is_directory=True)
+            with self.assertRaises(SystemExit):
+                fa.validate_material_path(str(linkdir / "env.systemd"), "m")
+
+    def test_accepts_plain_absolute_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = fa.validate_material_path(str(Path(d) / "env.systemd"), "m")
+            self.assertTrue(p.is_absolute())
+
+    def test_repo_materials_paths_all_valid(self):
+        cfg = fa.load_fleet(Path(__file__).resolve().parent.parent / "fleet.yaml")
+        for name, spec in cfg["materials"].items():
+            self.assertTrue(fa.validate_material_path(spec["path"], name).is_absolute())
+
+
 class FleetYamlSchemaTest(unittest.TestCase):
     def test_repo_fleet_yaml_loads(self):
         repo = Path(__file__).resolve().parent.parent
