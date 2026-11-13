@@ -270,13 +270,14 @@ class ConnectResolver:
         if resp.status == 503:
             raise ResolveError("保险库未解锁（503 vault_locked）——serve 正在解锁或解锁失败")
         if resp.status != 200:
-            raise ResolveError(f"GET {path} → HTTP {resp.status}: {body[:200]}")
+            # body 可能回显条目详情（含密钥字段）——状态码足够定位，内容不进消息
+            raise ResolveError(f"GET {path} → HTTP {resp.status}（body 已省略）")
         try:
             payload = json.loads(body)
         except json.JSONDecodeError as e:
-            raise ResolveError(f"GET {path} 非 JSON：{body[:200]}") from e
+            raise ResolveError(f"GET {path} 非 JSON（body 已省略）：{type(e).__name__}") from e
         if not payload.get("ok"):
-            raise ResolveError(f"GET {path} 业务错误：{body[:200]}")
+            raise ResolveError(f"GET {path} 业务错误 HTTP {resp.status}（body 已省略）")
         return payload.get("data")
 
     def resolve(self, item: str) -> str:
@@ -295,12 +296,35 @@ class ConnectResolver:
         value = variant.get("api_key")
         if not isinstance(value, str) or not value:
             raise ResolveError(f"{item}: 详情里没有 api_key 字段（形态：{sorted(data)}）")
+        raw = value
         value = normalize(value)
+        # 原始与归一化形态都登记——错误输出（yaml 片段等）两侧都可能出现
+        register_redaction(raw)
+        register_redaction(value)
         try:
             ensure_safe_value(item, value)
         except UnsafeSecretValue as e:
             raise ResolveError(str(e)) from e
         return value
+
+
+# ---------- 输出脱敏 ----------
+
+_redactions: list[str] = []
+
+
+def register_redaction(value: str) -> None:
+    """登记已知 secret 值；之后所有错误输出先经 sanitize 过滤。"""
+    if value and value not in _redactions:
+        _redactions.append(value)
+
+
+def sanitize(msg: str) -> str:
+    """把消息里出现的 vault 值替换为 ***（按长度降序，防子串遮蔽）。"""
+    for v in sorted(_redactions, key=len, reverse=True):
+        if v in msg:
+            msg = msg.replace(v, "***")
+    return msg
 
 
 # ---------- 各类消费方校验 ----------
@@ -310,7 +334,7 @@ class CheckFailure:
         self.errors: list[str] = []
 
     def add(self, msg: str) -> None:
-        self.errors.append(msg)
+        self.errors.append(sanitize(msg))
 
 
 def check_material(
@@ -560,7 +584,7 @@ def main(argv: list[str] | None = None) -> int:
         for p in cfg["providers"]:
             values[p["item"]] = resolver.resolve(p["item"])
     except ResolveError as e:
-        print(f"[fleet] FAIL resolve: {e}", file=sys.stderr)
+        print(f"[fleet] FAIL resolve: {sanitize(str(e))}", file=sys.stderr)
         return 1
     print(f"[fleet] resolve: {len(values)}/{len(cfg['providers'])} ok")
 
@@ -658,7 +682,7 @@ def main(argv: list[str] | None = None) -> int:
     if fail.errors:
         print(f"[check] FAIL ({len(fail.errors)}):")
         for e in fail.errors:
-            print(f"  - {e}")
+            print(f"  - {sanitize(e)}")
         return 1
     print("[check] OK — 材料、引用、明文扫描全部一致")
     return 0

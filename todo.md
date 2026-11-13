@@ -11,7 +11,7 @@
 - [x] 将 plaintext allowlist 通用化到 hermes，并对未登记明文默认失败（`fleet_apply.py:413-483`，main 接线 `gaps.hermes_plaintext`）——关闭同型残留。（2026-11-14：hermes 未登记 api_key 明文默认失败，登记格式=配置路径；实测 ~/.hermes/config.yaml 0 错误；PlaintextScanTest 新增 5 例，47 tests OK）
 - [x] 扩展明文扫描覆盖嵌套、列表裸值与键名变体（`fleet_apply.py:405-417` `_is_secret_slot` + `walk` 全字符串叶等值检测）——避免特殊结构绕过密钥检测。（2026-11-14：api[-_]?key 变体/列表裸值按属主键判定；vault 等值不分键名；实测两份真实 config 0 误报；PlaintextScanTest 新增 6 例，53 tests OK）
 - [ ] 在 `load_fleet` 校验 providers/consumers/materials/gaps 完整 schema（`fleet_apply.py:399-421`）——把配置错误变成精确失败。
-- [ ] 为所有 resolver、SQLite、JSON 错误生成脱敏消息（`fleet_apply.py:229-235`、`269-303`）——保证错误输出不泄漏 secret 或敏感细节。
+- [x] 为所有 resolver、SQLite、JSON 错误生成脱敏消息（`fleet_apply.py:311-329` `sanitize`/`register_redaction`，`CheckFailure.add` 与全部错误打印出口接线）——保证错误输出不泄漏 secret 或敏感细节。（2026-11-14：vault 值（原始+归一化）注册进脱敏表；resolver HTTP body 不再进消息；SanitizeTest 5 例，58 tests OK）
 - [ ] 包装 SecretRef 解析的所有协议异常并精确校验 field（`fleet_apply.py:219-235`）——防止协议变化导致崩溃或取错字段。
 - [x] 更新当前配置计数断言并从 `fleet.yaml` 推导（`tests/test_fleet_apply.py:177-189`）——恢复测试绿灯。（2026-11-14：断言改为 raw yaml 推导 + 硬编码现状 24 + 唯一性/gaps 交叉核对；27 tests OK）
 - [ ] 为 `merge_managed_block`/`check_material`/writer 增加 tempdir 集成测试（`fleet_apply.py:115-160`）——覆盖真实读写、冲突、权限和异常路径。

@@ -299,6 +299,37 @@ class SecretInjectionGuardTest(unittest.TestCase):
         self.assertIn("A=sk-abc_1.2:x/y+z\n", new)
 
 
+class SanitizeTest(unittest.TestCase):
+    def setUp(self):
+        fa._redactions.clear()
+        self.addCleanup(fa._redactions.clear)
+
+    def test_redacts_registered_value(self):
+        fa.register_redaction("sk-secret123")
+        self.assertEqual(fa.sanitize("got sk-secret123 in body"), "got *** in body")
+
+    def test_longest_match_wins(self):
+        fa.register_redaction("sk-short")
+        fa.register_redaction("sk-short-plus")
+        out = fa.sanitize("x sk-short-plus y sk-short z")
+        self.assertNotIn("sk-short", out)
+        self.assertEqual(out.count("***"), 2)
+
+    def test_unregistered_values_untouched(self):
+        self.assertEqual(fa.sanitize("plain message"), "plain message")
+
+    def test_checkfailure_add_sanitizes(self):
+        fa.register_redaction("sk-v")
+        f = fa.CheckFailure()
+        f.add("hermes-config: 解析失败 snippet api_key: sk-v end")
+        self.assertNotIn("sk-v", f.errors[0])
+        self.assertIn("***", f.errors[0])
+
+    def test_empty_value_not_registered(self):
+        fa.register_redaction("")
+        self.assertEqual(fa._redactions, [])
+
+
 class MaterialPathValidationTest(unittest.TestCase):
     def test_rejects_relative_path(self):
         with self.assertRaises(SystemExit):
