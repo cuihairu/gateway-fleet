@@ -17,5 +17,5 @@
 - [x] 为 `merge_managed_block`/`check_material`/writer 增加 tempdir 集成测试（`tests/test_fleet_apply.py` `CheckMaterialIntegrationTest` 等 4 个测试类）——覆盖真实读写、冲突、权限和异常路径。（2026-11-14：apply→check 闭环、外部篡改漂移、所有权漂移、0600 归一、快照回滚、不可读文件/软链异常路径（顺带修了 check_material 两处崩溃口）；109 tests OK）
 - [x] 添加依赖清单并更新安装/运行说明（`requirements.txt` + `README.md`/`README.zh.md` Prerequisites 第 0 步与 Layout 表）——消除 PyYAML 隐式依赖。（2026-11-14：PyYAML>=5.4 显式声明，两份 README 同步安装步骤）
 - [x] 更正 README 中 litellm/hermes 变量数量（`README.md:66-77`、`README.zh.md:58-68`）——消除文档不实。（2026-11-14：脚本核实 litellm-env 实为 20 个变量（原写 18）、hermes-env 实为 5 个含 ARK_API_KEY（原写 4）；两份 README 改正并列全名单；新增护栏测试锁数量，110 tests OK）
-- [ ] 补充 persona 最低版本与空闲窗口验证证据说明（`README.md:39-45`）——让安全前提可复验。
+- [x] 补充 persona 最低版本与空闲窗口验证证据说明（`README.md:39-58`、`README.zh.md:43-57`）——让安全前提可复验。（2026-11-14：明示最低构建 ≥ 2026-11-09 及其两个修复点；4 步复验流程含失败判据 `503 vault_locked`；两份 README 同步）
 - [ ] 添加最小 ruff/CI 配置并修复现有 9 个 lint 问题（`fleet_apply.py:17`）——建立回归防护基线。

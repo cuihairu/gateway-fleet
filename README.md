@@ -41,12 +41,25 @@ persona connect serve --unix-socket &
 export PERSONA_CONNECT_TOKEN='pconn_…'   # scope llm-automation/api_key
 ```
 
-> **Idle windows (both closed, persona ≥ 2026-11-09)** — `security.
-> auto_lock_timeout` is now wired into the runtime (`0` = never; this
-> workspace sets `0` in `config.toml`), and authenticated Connect requests
-> refresh the sensitive-operation timer (the scoped token counts as
-> re-authentication). Verified live: `--check` green after **7 min idle**
-> with `health`, the data plane and secret reads all answering.
+### Persona minimum build & idle-window verification (security precondition)
+
+fleet-apply assumes a persona **build ≥ 2026-11-09**: that build (a) wires
+`security.auto_lock_timeout` into the runtime (`0` = never auto-lock; this
+workspace sets `0` in `config.toml`) and (b) refreshes the
+sensitive-operation timer on authenticated Connect requests (the scoped
+`pconn_` token counts as re-authentication). On older builds the vault may
+auto-lock mid-run and fail with `503 vault_locked`.
+
+Re-verifiable evidence (recorded live 2026-11-09):
+
+1. `persona --version` → confirm build date ≥ 2026-11-09.
+2. `grep auto_lock_timeout` in the persona `config.toml` → expect `0`.
+3. Unlock the vault, run `python3 fleet_apply.py --check` → green.
+4. Idle ≥ **7 min** (no persona traffic), re-run `--check` → still green;
+   `health`, the data plane and secret reads all answering.
+
+If step 4 fails with `503 vault_locked`, the persona build predates the fix —
+upgrade before relying on unattended runs.
 
 ## Usage
 

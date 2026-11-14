@@ -40,11 +40,24 @@ persona connect serve --unix-socket &
 export PERSONA_CONNECT_TOKEN='pconn_…'   # scope llm-automation/api_key
 ```
 
-> **两个空闲窗口均已关闭（persona ≥ 2026-11-09）** —— `security.
-> auto_lock_timeout` 已接进运行时（`0` = 永不；本工作区 `config.toml` 已设
-> `0`），且经鉴权的 Connect 请求会刷新敏感操作计时（scoped token 即再认
-> 证）。真机验证：空闲 **7 分钟**后 `--check` 全绿，health、数据面与读密
-> 文全部正常应答。
+### persona 最低版本与空闲窗口复验（安全前提）
+
+fleet-apply 依赖 persona **≥ 2026-11-09 构建**：该构建 (a) 把
+`security.auto_lock_timeout` 接进运行时（`0` = 永不自动锁；本工作区
+`config.toml` 已设 `0`），(b) 经鉴权的 Connect 请求会刷新敏感操作计时
+（scoped `pconn_` token 即再认证）。更旧的构建可能在运行途中自动锁库，
+以 `503 vault_locked` 失败。
+
+可复验的证据（2026-11-09 真机录得）：
+
+1. `persona --version` → 构建日期 ≥ 2026-11-09。
+2. persona `config.toml` 中 `grep auto_lock_timeout` → 应为 `0`。
+3. 解锁保险库，跑 `python3 fleet_apply.py --check` → 全绿。
+4. 空闲 ≥ **7 分钟**（无 persona 流量）后重跑 `--check` → 仍全绿；
+   health、数据面与读密文全部正常应答。
+
+第 4 步若得到 `503 vault_locked`，说明 persona 构建早于修复——先升级，
+再谈无人值守运行。
 
 ## 用法
 
