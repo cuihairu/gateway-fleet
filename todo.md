@@ -14,7 +14,7 @@
 - [x] 为所有 resolver、SQLite、JSON 错误生成脱敏消息（`fleet_apply.py:311-329` `sanitize`/`register_redaction`，`CheckFailure.add` 与全部错误打印出口接线）——保证错误输出不泄漏 secret 或敏感细节。（2026-11-14：vault 值（原始+归一化）注册进脱敏表；resolver HTTP body 不再进消息；SanitizeTest 5 例，58 tests OK）
 - [x] 包装 SecretRef 解析的所有协议异常并精确校验 field（`fleet_apply.py:332-398` `resolve`/`_resolve`，字段名常量 `FIELD_API_KEY`）——防止协议变化导致崩溃或取错字段。（2026-11-14：列表/详情/data/字段逐级形态校验，TypeError/KeyError 等全部包装成 ResolveError，不再裸抛；SecretRefProtocolTest 7 例，85 tests OK）
 - [x] 更新当前配置计数断言并从 `fleet.yaml` 推导（`tests/test_fleet_apply.py:177-189`）——恢复测试绿灯。（2026-11-14：断言改为 raw yaml 推导 + 硬编码现状 24 + 唯一性/gaps 交叉核对；27 tests OK）
-- [ ] 为 `merge_managed_block`/`check_material`/writer 增加 tempdir 集成测试（`fleet_apply.py:115-160`）——覆盖真实读写、冲突、权限和异常路径。
+- [x] 为 `merge_managed_block`/`check_material`/writer 增加 tempdir 集成测试（`tests/test_fleet_apply.py` `CheckMaterialIntegrationTest` 等 4 个测试类）——覆盖真实读写、冲突、权限和异常路径。（2026-11-14：apply→check 闭环、外部篡改漂移、所有权漂移、0600 归一、快照回滚、不可读文件/软链异常路径（顺带修了 check_material 两处崩溃口）；109 tests OK）
 - [ ] 添加依赖清单并更新安装/运行说明（`README.md:47-54`）——消除 PyYAML 隐式依赖。
 - [ ] 更正 README 中 litellm/hermes 变量数量（`README.md:61-66`）——消除文档不实。
 - [ ] 补充 persona 最低版本与空闲窗口验证证据说明（`README.md:39-45`）——让安全前提可复验。

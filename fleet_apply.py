@@ -410,7 +410,14 @@ def check_material(
     if not path.exists():
         fail.add(f"material {name}: 文件不存在 {path}")
         return
-    text = path.read_text(encoding="utf-8")
+    if path.is_symlink():
+        fail.add(f"material {name}: 目标是符号链接 {path}（拒绝校验）")
+        return
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        fail.add(f"material {name}: 读取失败（{type(e).__name__}）")
+        return
     issues = block_structure_issues(text)
     if issues:
         for issue in issues:

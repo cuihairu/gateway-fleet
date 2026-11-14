@@ -573,6 +573,101 @@ class ApplyMaterialTest(unittest.TestCase):
                     fcntl.flock(holder, fcntl.LOCK_UN)
 
 
+class CheckMaterialIntegrationTest(unittest.TestCase):
+    """真实文件上的 apply→check 闭环：读写、冲突、权限、异常路径。"""
+
+    def _material(self, d, text=None, mode=0o600):
+        path = Path(d) / "env.systemd"
+        if text is not None:
+            path.write_text(text, encoding="utf-8")
+        os.chmod(path, mode)
+        return path
+
+    def test_missing_file_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = fa.CheckFailure()
+            fa.check_material("m", {"path": str(Path(d) / "absent")}, {"A": "v"}, f)
+            self.assertTrue(any("文件不存在" in e for e in f.errors))
+
+    def test_apply_then_check_green_roundtrip(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            fa.apply_material(
+                "m", {"path": str(path), "mode": "0600"}, {"A": "v1"}, force=False
+            )
+            f = fa.CheckFailure()
+            fa.check_material("m", {"path": str(path)}, {"A": "v1"}, f)
+            self.assertEqual(f.errors, [])
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_drift_detected_after_external_tamper(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            fa.apply_material(
+                "m", {"path": str(path), "mode": "0600"}, {"A": "v1"}, force=False
+            )
+            tampered = path.read_text(encoding="utf-8").replace("A=v1", "A=v2")
+            path.write_text(tampered, encoding="utf-8")
+            f = fa.CheckFailure()
+            fa.check_material("m", {"path": str(path)}, {"A": "v1"}, f)
+            self.assertTrue(any("不一致（漂移）" in e for e in f.errors))
+
+    def test_outside_ownership_drift_detected(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            fa.apply_material(
+                "m", {"path": str(path), "mode": "0600"}, {"A": "v1"}, force=False
+            )
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write("A=v1\n")  # 块外重复定义
+            f = fa.CheckFailure()
+            fa.check_material("m", {"path": str(path)}, {"A": "v1"}, f)
+            self.assertTrue(any("所有权漂移" in e for e in f.errors))
+
+    def test_apply_normalizes_loose_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._material(d, "KEEP=1\n", mode=0o644)
+            fa.apply_material(
+                "m", {"path": str(path), "mode": "0600"}, {"A": "v1"}, force=False
+            )
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_rollback_from_snapshot_restores_original(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            original = "KEEP=1\n" + fa.render_block({"A": "old"})
+            self._material(d, original)
+            fa.apply_material(
+                "m", {"path": str(path), "mode": "0600"}, {"A": "new"}, force=False
+            )
+            snap = path.with_name(path.name + ".fleet-bak")
+            path.write_text(snap.read_text(encoding="utf-8"), encoding="utf-8")
+            os.chmod(path, 0o600)
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores file modes")
+    def test_unreadable_file_reported_not_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._material(d, fa.render_block({"A": "v"}))
+            os.chmod(path, 0o000)
+            try:
+                f = fa.CheckFailure()
+                fa.check_material("m", {"path": str(path)}, {"A": "v"}, f)
+                self.assertTrue(any("读取失败" in e for e in f.errors))
+            finally:
+                os.chmod(path, 0o600)
+
+    def test_symlinked_material_rejected_at_check(self):
+        with tempfile.TemporaryDirectory() as d:
+            real = Path(d) / "real.env"
+            real.write_text(fa.render_block({"A": "v"}), encoding="utf-8")
+            link = Path(d) / "env.systemd"
+            link.symlink_to(real)
+            f = fa.CheckFailure()
+            fa.check_material("m", {"path": str(link)}, {"A": "v"}, f)
+            self.assertTrue(any("符号链接" in e for e in f.errors))
+
+
 class SanitizeTest(unittest.TestCase):
     def setUp(self):
         fa._redactions.clear()
