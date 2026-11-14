@@ -60,10 +60,14 @@ python3 -m unittest discover -s tests    # 单元测试
 ## `--apply` 管什么
 
 - **`litellm env.systemd`** —— 托管块（`# >>> gateway-fleet …`）承载 vault
-  覆盖的 18 个变量，文件其余部分原样保留。仅当值实际变化时才需要
+  覆盖的 20 个变量（ARK_API_KEY、DEEPSEEK_API_KEY、LITELLM_MASTER_KEY、
+  MIMO_API_KEY、MOONSHOT_API_KEY、NVIDIA_NIM_API_KEY、OPENCODE_GO_KEY、
+  QN_API_KEY/2/3、SENSENOVA_API_KEY/2/3、SENSENOVA_A3–A7_KEY、XIAOMI_API_KEY、
+  ZAI_AUTH_TOKEN），文件其余部分原样保留。仅当值实际变化时才需要
   `systemctl --user restart litellm`。
-- **`hermes .env`** —— 托管块含 `GLM_API_KEY`、`XIAOMI_API_KEY`、
-  `BIFROST_VK_MAIN`、`LITELLM_MASTER_KEY`；hermes 加载配置时重读 `.env`。
+- **`hermes .env`** —— 托管块含 vault 覆盖的 5 个变量：`ARK_API_KEY`、
+  `BIFROST_VK_MAIN`、`GLM_API_KEY`、`LITELLM_MASTER_KEY`、`XIAOMI_API_KEY`；
+  hermes 加载配置时重读 `.env`。
 
 ### 写入安全
 

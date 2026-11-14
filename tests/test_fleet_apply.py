@@ -878,6 +878,17 @@ class FleetYamlSchemaTest(unittest.TestCase):
         for name in (cfg.get("gaps") or {}).get("vault_no_consumer", []):
             self.assertIn(name, items)
 
+    def test_material_var_counts_match_readme(self):
+        # README 宣称的数量与 fleet.yaml 锁死：litellm-env 20 个、hermes-env 5 个
+        cfg = fa.load_fleet(Path(__file__).resolve().parent.parent / "fleet.yaml")
+        counts: dict[str, set] = {"litellm-env": set(), "hermes-env": set()}
+        for p in cfg["providers"]:
+            for c in p.get("consumers") or []:
+                if c["target"] in counts:
+                    counts[c["target"]] |= set(c.get("vars", []))
+        self.assertEqual(len(counts["litellm-env"]), 20)
+        self.assertEqual(len(counts["hermes-env"]), 5)
+
 
 if __name__ == "__main__":
     unittest.main()

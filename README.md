@@ -63,11 +63,15 @@ never key values.
 ## What `--apply` manages
 
 - **`litellm env.systemd`** — managed block (`# >>> gateway-fleet …`) holding the
-  18 vault-covered variables; everything else in the file stays untouched.
+  20 vault-covered variables (ARK_API_KEY, DEEPSEEK_API_KEY, LITELLM_MASTER_KEY,
+  MIMO_API_KEY, MOONSHOT_API_KEY, NVIDIA_NIM_API_KEY, OPENCODE_GO_KEY,
+  QN_API_KEY/2/3, SENSENOVA_API_KEY/2/3, SENSENOVA_A3–A7_KEY, XIAOMI_API_KEY,
+  ZAI_AUTH_TOKEN); everything else in the file stays untouched.
   Restart `litellm` only when a value actually changes
   (`systemctl --user restart litellm`).
-- **`hermes .env`** — managed block with `GLM_API_KEY`, `XIAOMI_API_KEY`,
-  `BIFROST_VK_MAIN`, `LITELLM_MASTER_KEY`. hermes re-reads `.env` on config load.
+- **`hermes .env`** — managed block with the 5 vault-covered variables:
+  `ARK_API_KEY`, `BIFROST_VK_MAIN`, `GLM_API_KEY`, `LITELLM_MASTER_KEY`,
+  `XIAOMI_API_KEY`. hermes re-reads `.env` on config load.
 
 ### Write safety
 
