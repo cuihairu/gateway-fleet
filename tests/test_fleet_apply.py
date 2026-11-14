@@ -300,6 +300,54 @@ class SecretInjectionGuardTest(unittest.TestCase):
         self.assertIn("A=sk-abc_1.2:x/y+z\n", new)
 
 
+class BlockStructureTest(unittest.TestCase):
+    def test_clean_block_has_no_issues(self):
+        self.assertEqual(
+            fa.block_structure_issues(fa.render_block({"A": "1"})), []
+        )
+
+    def test_duplicate_begin_reported(self):
+        text = f"{fa.BEGIN}\nA=1\n{fa.BEGIN}\nA=1\n{fa.END}\n"
+        self.assertTrue(any("重复" in i for i in fa.block_structure_issues(text)))
+
+    def test_unclosed_begin_reported(self):
+        self.assertTrue(
+            any("未闭合" in i for i in fa.block_structure_issues(f"{fa.BEGIN}\nA=1\n"))
+        )
+
+    def test_end_outside_block_reported(self):
+        self.assertTrue(
+            any("错序" in i for i in fa.block_structure_issues(f"{fa.END}\nA=1\n"))
+        )
+
+    def test_apply_refuses_broken_structure(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            path.write_text(f"{fa.BEGIN}\nA=old\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                fa.apply_material(
+                    "m", {"path": str(path), "mode": "0600"}, {"A": "new"}, force=False
+                )
+            self.assertIn("A=old", path.read_text(encoding="utf-8"))
+
+    def test_check_reports_structural_anomaly(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            path.write_text(f"{fa.END}\nA=1\n", encoding="utf-8")
+            f = fa.CheckFailure()
+            fa.check_material("m", {"path": str(path)}, {"A": "x"}, f)
+            self.assertTrue(any("结构异常" in e for e in f.errors))
+
+    def test_check_reports_reset_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "env.systemd"
+            path.write_text(fa.render_block({}) + "A=1\n", encoding="utf-8")
+            f = fa.CheckFailure()
+            fa.check_material("m", {"path": str(path)}, {"A": "x"}, f)
+            self.assertTrue(any("疑似被重置" in e for e in f.errors))
+            self.assertTrue(any("托管块缺 A" in e for e in f.errors))
+
+
 class ApplyMaterialTest(unittest.TestCase):
     def _spec(self, path: Path, mode: str = "0600") -> dict:
         return {"path": str(path), "mode": mode}

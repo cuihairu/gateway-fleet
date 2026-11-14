@@ -5,7 +5,7 @@
 - [x] 校验并拒绝材料路径穿越、绝对路径越界与符号链接（`fleet_apply.py:70-89` `validate_material_path`，`load_fleet` 接线）——防止恶意或错误 YAML 写到授权目录外。（2026-11-14：拒绝相对路径/`..`/软链目标/软链祖先；MaterialPathValidationTest 6 例，33 tests OK）
 - [x] 禁止含换行/标记形态的 secret 进入 env 值，或改为安全编码（`fleet_apply.py:34-52` `ensure_safe_value` + `render_value` 序列化防线 + `merge_managed_block`/`resolve` 接线）——阻断管理块注入。（2026-11-14：换行/CR/NUL/块标记一律拒绝；SecretInjectionGuardTest 5 例，38 tests OK）
 - [x] 改造托管块重组策略，保证冲突和失败场景保留完整原内容（`fleet_apply.py:160-225`）——避免清空块造成旧 secret 丢失。（2026-11-14：空清单拒写、冲突变量保留块内旧值、清单收缩变量原值保留并报告；ManagedBlockTest 新增 5 例，42 tests OK）
-- [ ] 让 `--check` 检测重复、未闭合、错序和重置过的管理块（`fleet_apply.py:88-107`）——消除重置标记掩盖漂移的绕过路径。
+- [x] 让 `--check` 检测重复、未闭合、错序和重置过的管理块（`fleet_apply.py:139-159` `block_structure_issues`，`check_material`/`merge_managed_block` 双向接线）——消除重置标记掩盖漂移的绕过路径。（2026-11-14：重复 BEGIN/未闭合/END 错序/空块重置均报失败，结构异常时重组拒写；BlockStructureTest 7 例，72 tests OK）
 - [ ] 将 Bifrost 只读检查改为真正无副作用打开，并前置 schema 校验（`fleet_apply.py:269-296`）——消除 SQLite journal/WAL 副作用。
 - [ ] 把 litellm/hermes 只读目标路径声明进 `fleet.yaml` 并从配置读取（`fleet_apply.py:521-531`）——恢复单一事实源，支持跨设备。
 - [x] 将 plaintext allowlist 通用化到 hermes，并对未登记明文默认失败（`fleet_apply.py:413-483`，main 接线 `gaps.hermes_plaintext`）——关闭同型残留。（2026-11-14：hermes 未登记 api_key 明文默认失败，登记格式=配置路径；实测 ~/.hermes/config.yaml 0 错误；PlaintextScanTest 新增 5 例，47 tests OK）

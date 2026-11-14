@@ -152,6 +152,31 @@ def split_managed(text: str) -> tuple[dict[str, str], dict[str, str], list[str],
     return block_vars, outside_vars, outside, block_found
 
 
+def block_structure_issues(text: str) -> list[str]:
+    """托管块结构体检：重复 BEGIN、未闭合 BEGIN、END 错序。
+
+    这些异常会让"块内/块外"的归属变得不明确——检查要报，重组要拒，
+    否则漂移可能被伪造的块标记掩盖。
+    """
+    issues: list[str] = []
+    seen_begin = 0
+    in_block = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == BEGIN:
+            seen_begin += 1
+            if seen_begin > 1:
+                issues.append(f"第 {seen_begin} 处重复出现 BEGIN")
+            in_block = True
+        elif stripped == END:
+            if not in_block:
+                issues.append("END 出现在托管块之外（错序）")
+            in_block = False
+    if in_block:
+        issues.append("BEGIN 未闭合（缺 END）")
+    return issues
+
+
 def render_block(vars_in_order: dict[str, str]) -> str:
     body = "".join(f"{k}={render_value(v)}\n" for k, v in vars_in_order.items())
     return f"{BEGIN}\n{body}{END}\n"
@@ -170,6 +195,10 @@ def merge_managed_block(
     if not wanted:
         # 空清单重写会把整块清空（历史 secret 全部丢失）——拒绝，提请检查 fleet.yaml。
         raise ValueError("wanted 为空：拒绝重写托管块（会丢失块内旧内容）")
+    issues = block_structure_issues(text)
+    if issues:
+        # 块归属不明时重组只会产出更糟的文件——先人工修复。
+        raise ValueError("原文托管块结构异常：" + "；".join(issues) + "（人工修复后再 --apply）")
     for k, v in wanted.items():
         ensure_safe_value(k, v)
     block_vars, outside_vars, outside_lines, _ = split_managed(text)
@@ -347,10 +376,17 @@ def check_material(
         fail.add(f"material {name}: 文件不存在 {path}")
         return
     text = path.read_text(encoding="utf-8")
+    issues = block_structure_issues(text)
+    if issues:
+        for issue in issues:
+            fail.add(f"material {name}: 托管块结构异常：{issue}（人工修复后再 --apply）")
+        return  # 块归属不明时继续拆只会产出误导性结果
     block_vars, outside_vars, _, present = split_managed(text)
     if not present:
         fail.add(f"material {name}: 托管块缺失（跑 --apply）")
         return
+    if not block_vars and wanted:
+        fail.add(f"material {name}: 托管块为空（疑似被重置；跑 --apply 恢复）")
     for var, value in wanted.items():
         if var not in block_vars:
             fail.add(f"material {name}: 托管块缺 {var}")
