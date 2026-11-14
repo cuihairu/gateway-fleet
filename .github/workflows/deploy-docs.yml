@@ -23,9 +23,6 @@ on:
 permissions:
   contents: read
   pages: write
-  # admin:pages lets the first run create the Pages site itself (POST
-  # /pages) instead of failing on "Resource not accessible by integration".
-  admin:pages: write
   id-token: write
 
 concurrency:
@@ -38,12 +35,6 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
-      - name: Configure Pages
-        # Pages is not enabled yet on this repo, so the first run has to
-        # enable it and set the source to "GitHub Actions" itself.
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: pnpm/action-setup@v4
         with:
           version: 12
