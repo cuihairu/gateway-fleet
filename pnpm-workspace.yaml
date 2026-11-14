@@ -1,4 +1,8 @@
-# pnpm 12 reads build-script approval here. Only esbuild needs a postinstall
-# script (it downloads its own binary); everything else stays unbuilt.
+# pnpm 12 gates ignored postinstall scripts on `strict-dep-builds`, which is
+# on by default and fails CI with ERR_PNPM_IGNORED_BUILDS. esbuild's own
+# postinstall is only an optimisation (it downloads a binary that the
+# @esbuild/linux-x64 package already ships), so builds do not need it:
+# the flat list is kept for the record and strictness is turned off.
 onlyBuiltDependencies:
   - esbuild
+strictDepBuilds: false
