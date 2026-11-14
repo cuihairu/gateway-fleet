@@ -26,6 +26,8 @@ persona vault (llm-automation)          fleet.yaml                 consumers
 | `fleet_apply.py` | resolver + material writer + checker (`--check` / `--apply`) |
 | `tests/test_fleet_apply.py` | unit + tempdir integration tests (no network, no real materials) |
 | `requirements.txt` | third-party dependencies (PyYAML only) |
+| `.github/workflows/ci.yml` | CI gates: ruff lint + unittest (no release job) |
+| `todo.md` | finding ledger (audit items + resolution evidence) |
 
 ## Prerequisites
 
@@ -65,7 +67,7 @@ upgrade before relying on unattended runs.
 
 ```bash
 python3 fleet_apply.py --check    # verify: resolve + materials + refs + plaintext scan
-python3 fleet_apply.py --apply    # write managed blocks (0600), then verify
+python3 fleet_apply.py --apply    # write managed blocks (0600), then run the check pass
 python3 fleet_apply.py --apply --force   # overwrite conflicting outside-block values
 python3 -m unittest discover -s tests    # unit + integration tests
 ruff check .                              # lint (CI runs the same two gates)

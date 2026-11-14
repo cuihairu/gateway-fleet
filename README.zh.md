@@ -25,6 +25,8 @@ persona 保险库 (llm-automation)        fleet.yaml                 消费方
 | `fleet_apply.py` | 解析器 + 材料落盘 + 校验（`--check` / `--apply`） |
 | `tests/test_fleet_apply.py` | 单测 + tempdir 集成测试（不触网、不碰真实材料） |
 | `requirements.txt` | 第三方依赖（仅 PyYAML） |
+| `.github/workflows/ci.yml` | CI 两道闸：ruff lint + 单元测试（无发版 job） |
+| `todo.md` | 发现台账（审计条目 + 收口证据） |
 
 ## 前置
 
@@ -63,9 +65,10 @@ fleet-apply 依赖 persona **≥ 2026-11-09 构建**：该构建 (a) 把
 
 ```bash
 python3 fleet_apply.py --check    # 校验：解析 + 材料 + 引用 + 明文扫描
-python3 fleet_apply.py --apply    # 写托管块（0600），随后自动校验
-python3 fleet_apply.py --apply --force   # 覆盖块外不一致的旧值
-python3 -m unittest discover -s tests    # 单元测试
+python3 fleet_apply.py --apply    # 写托管块（0600），随后自动转入校验
+python3 fleet_apply.py --apply --force   # 连块外不一致的旧值一并覆盖
+python3 -m unittest discover -s tests    # 单测 + tempdir 集成测试（110 例）
+ruff check .                              # lint（CI 跑同样两道闸）
 ```
 
 任何漂移都会非零退出；输出只有名称与结论——**绝不打印密钥值**。
