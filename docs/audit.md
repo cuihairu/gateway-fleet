@@ -89,19 +89,35 @@ were fixed in that order, and the live probes came back
 | `/zh/` | 200 | `zh-CN` | 298 | 170 |
 | `/zh/features` | 200 | `zh-CN` | 874 | 700 |
 | `/zh/keys` | 200 | `zh-CN` | 846 | 671 |
-| `/zh/audit` | 200 | `zh-CN` | 1080 | 913 |
+| `/zh/audit` | 200 | `zh-CN` | — | — |
 
 Every CJK character on an English page is page chrome — the zh sidebar entries
 and the language menu label. Content CJK is **0** on all English pages except
-`/audit`, where the 19 characters are two literal Chinese *file names* that must
-match the real paths (`文档与源码一致性审计规范.md`,
-`docs-audit/审计-文档一致性.md`). No translated content crosses locales.
+`/audit`, where the 19 characters are the two literal Chinese *file names* in the
+method link at the top of the page (12 + 8). No translated content crosses
+locales.
 
-Counting CJK in the *first 2000 bytes* is not a usable metric here: `<head>` and
-nav vary in length per page, so the same page read differently at different byte
-offsets. Whole-page counts with a nav/`<head>` split are deterministic, so that is
-what is asserted. (The earlier "first-screen CJK" figures in the closure notes
-were such an artifact and are superseded.)
+The counts are whole characters, not CJK strings. Counting CJK in the *first
+2000 bytes* is not usable here: `<head>` and nav vary in length per page, so the
+same page reads differently at different byte offsets. Whole-page counts with a
+nav/`<head>` split are deterministic, so that is what is asserted. (The earlier
+"first-screen CJK" figures in the closure notes were such an artifact and are
+superseded.)
+
+The `/audit` rows are self-referential — the page that renders the numbers also
+carries the prose describing them — so they were read back from the built HTML
+after that prose was final, and this caveat is ASCII-only on purpose so it cannot
+move the English figures. It briefly named those two file paths again in the
+prose, which added 12 + 8 characters and made the English content count read 38
+instead of 19: the measurement reacting to its own write-up, not the page
+changing. The English figures are stable across rebuilds for that reason.
+
+`/zh/audit` is deliberately left unpinned: its caveat must be written in
+Chinese on that very page, so rewording it moves the count it reports — it read
+1059, 1351, 1173 and 1361 across the rebuilds while this note was edited. Not
+asserting a figure that moves under the reader beats asserting a wrong one. The
+observed values are logged in the internal ledger, which is not part of the site
+build and so cannot self-reference.
 
 The README line that said the first deploy was still pending was reworded back
 to a live URL once it went green — that wording would itself have been drift.
