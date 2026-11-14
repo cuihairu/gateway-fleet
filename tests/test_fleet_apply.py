@@ -367,6 +367,79 @@ class BifrostCheckTest(unittest.TestCase):
             self.assertTrue(any("schema 不符" in e for e in f.errors))
 
 
+class FakeResolver(fa.ConnectResolver):
+    """注入 _get 的假 resolver——测协议形态鲁棒性，不触网。"""
+
+    def __init__(self, responses):
+        super().__init__("/tmp/unused.sock", "t")
+        self.responses = responses
+
+    def _get(self, path):
+        return self.responses[path]
+
+
+ITEMS = [{"title": "zai-glm", "id": 7}]
+DETAIL_OK = {"data": {"ApiKey": {"api_key": "sk-real"}}}
+
+
+class SecretRefProtocolTest(unittest.TestCase):
+    def test_happy_path(self):
+        r = FakeResolver({
+            "/api/v1/connect/items": ITEMS,
+            "/api/v1/connect/items/7": DETAIL_OK,
+        })
+        self.assertEqual(r.resolve("zai-glm"), "sk-real")
+
+    def test_wraps_protocol_type_error(self):
+        r = FakeResolver({
+            "/api/v1/connect/items": "not-a-list",
+            "/api/v1/connect/items/7": DETAIL_OK,
+        })
+        with self.assertRaises(fa.ResolveError):
+            r.resolve("zai-glm")
+
+    def test_wraps_missing_id(self):
+        r = FakeResolver({
+            "/api/v1/connect/items": [{"title": "zai-glm"}],
+            "/api/v1/connect/items/None": DETAIL_OK,
+        })
+        with self.assertRaises(fa.ResolveError):
+            r.resolve("zai-glm")
+
+    def test_wraps_non_dict_detail(self):
+        r = FakeResolver({
+            "/api/v1/connect/items": ITEMS,
+            "/api/v1/connect/items/7": [1, 2, 3],
+        })
+        with self.assertRaises(fa.ResolveError):
+            r.resolve("zai-glm")
+
+    def test_wraps_missing_data_object(self):
+        r = FakeResolver({
+            "/api/v1/connect/items": ITEMS,
+            "/api/v1/connect/items/7": {"data": None},
+        })
+        with self.assertRaises(fa.ResolveError):
+            r.resolve("zai-glm")
+
+    def test_precise_field_missing_message(self):
+        r = FakeResolver({
+            "/api/v1/connect/items": ITEMS,
+            "/api/v1/connect/items/7": {"data": {"ApiKey": {"other": 1}}},
+        })
+        with self.assertRaises(fa.ResolveError) as ctx:
+            r.resolve("zai-glm")
+        self.assertIn("api_key", str(ctx.exception))
+
+    def test_item_not_in_list(self):
+        r = FakeResolver({
+            "/api/v1/connect/items": [],
+            "/api/v1/connect/items/7": DETAIL_OK,
+        })
+        with self.assertRaises(fa.ResolveError):
+            r.resolve("zai-glm")
+
+
 class BlockStructureTest(unittest.TestCase):
     def test_clean_block_has_no_issues(self):
         self.assertEqual(

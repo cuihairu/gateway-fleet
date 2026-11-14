@@ -12,7 +12,7 @@
 - [x] 扩展明文扫描覆盖嵌套、列表裸值与键名变体（`fleet_apply.py:405-417` `_is_secret_slot` + `walk` 全字符串叶等值检测）——避免特殊结构绕过密钥检测。（2026-11-14：api[-_]?key 变体/列表裸值按属主键判定；vault 等值不分键名；实测两份真实 config 0 误报；PlaintextScanTest 新增 6 例，53 tests OK）
 - [ ] 在 `load_fleet` 校验 providers/consumers/materials/gaps 完整 schema（`fleet_apply.py:399-421`）——把配置错误变成精确失败。
 - [x] 为所有 resolver、SQLite、JSON 错误生成脱敏消息（`fleet_apply.py:311-329` `sanitize`/`register_redaction`，`CheckFailure.add` 与全部错误打印出口接线）——保证错误输出不泄漏 secret 或敏感细节。（2026-11-14：vault 值（原始+归一化）注册进脱敏表；resolver HTTP body 不再进消息；SanitizeTest 5 例，58 tests OK）
-- [ ] 包装 SecretRef 解析的所有协议异常并精确校验 field（`fleet_apply.py:219-235`）——防止协议变化导致崩溃或取错字段。
+- [x] 包装 SecretRef 解析的所有协议异常并精确校验 field（`fleet_apply.py:332-398` `resolve`/`_resolve`，字段名常量 `FIELD_API_KEY`）——防止协议变化导致崩溃或取错字段。（2026-11-14：列表/详情/data/字段逐级形态校验，TypeError/KeyError 等全部包装成 ResolveError，不再裸抛；SecretRefProtocolTest 7 例，85 tests OK）
 - [x] 更新当前配置计数断言并从 `fleet.yaml` 推导（`tests/test_fleet_apply.py:177-189`）——恢复测试绿灯。（2026-11-14：断言改为 raw yaml 推导 + 硬编码现状 24 + 唯一性/gaps 交叉核对；27 tests OK）
 - [ ] 为 `merge_managed_block`/`check_material`/writer 增加 tempdir 集成测试（`fleet_apply.py:115-160`）——覆盖真实读写、冲突、权限和异常路径。
 - [ ] 添加依赖清单并更新安装/运行说明（`README.md:47-54`）——消除 PyYAML 隐式依赖。

@@ -37,6 +37,7 @@ SAFE_VALUE = re.compile(r"^[A-Za-z0-9._:/+@-]+$")
 ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}")
 UNSAFE_SECRET = re.compile(r"[\x00\r\n]")
+FIELD_API_KEY = "api_key"  # SecretRef 约定的字段名；协议侧变化在此一处收紧
 
 
 class UnsafeSecretValue(ValueError):
@@ -312,21 +313,55 @@ class ConnectResolver:
         return payload.get("data")
 
     def resolve(self, item: str) -> str:
-        """解析 llm-automation/<item>/api_key → 密钥值（内存态，不落盘不打印）。"""
+        """解析 llm-automation/<item>/api_key → 密钥值（内存态，不落盘不打印）。
+
+        协议形态（列表/详情/字段名）任何变化都降级成 ResolveError——
+        绝不把裸 TypeError/KeyError 抛到调用方。
+        """
+        try:
+            return self._resolve(item)
+        except ResolveError:
+            raise
+        except (TypeError, AttributeError, KeyError, IndexError, ValueError) as e:
+            raise ResolveError(
+                f"{item}: 协议解析异常（{type(e).__name__}）——connect 响应形态可能已变化"
+            ) from e
+
+    def _resolve(self, item: str) -> str:
         items = self._get("/api/v1/connect/items")
+        if not isinstance(items, list):
+            raise ResolveError(
+                "条目列表形态异常（期望数组，得到 "
+                f"{type(items).__name__}）——connect 协议可能已变化"
+            )
         entry = None
         for it in items:
+            if not isinstance(it, dict):
+                continue
             if item in (it.get("title"), it.get("name")):
                 entry = it
                 break
         if entry is None:
             raise ResolveError(f"scope 内找不到条目 {item!r}")
-        detail = self._get(f"/api/v1/connect/items/{entry['id']}")
-        data = detail.get("data") or {}
-        variant = data.get("ApiKey") or data
-        value = variant.get("api_key")
+        item_id = entry.get("id")
+        if item_id in (None, "") or not isinstance(item_id, (str, int)):
+            raise ResolveError(f"条目 {item!r} 缺少 id（协议形态异常）")
+        detail = self._get(f"/api/v1/connect/items/{item_id}")
+        if not isinstance(detail, dict):
+            raise ResolveError(f"{item}: 详情非对象（协议形态异常）")
+        data = detail.get("data")
+        if not isinstance(data, dict):
+            raise ResolveError(f"{item}: 详情缺 data 对象（协议形态异常）")
+        variant = data.get("ApiKey")
+        used = "ApiKey"
+        if not isinstance(variant, dict):
+            variant, used = data, "data"
+        value = variant.get(FIELD_API_KEY)
         if not isinstance(value, str) or not value:
-            raise ResolveError(f"{item}: 详情里没有 api_key 字段（形态：{sorted(data)}）")
+            raise ResolveError(
+                f"{item}: {used}.{FIELD_API_KEY} 缺失或为空"
+                f"（字段形态：{sorted(map(str, data))}）"
+            )
         raw = value
         value = normalize(value)
         # 原始与归一化形态都登记——错误输出（yaml 片段等）两侧都可能出现
