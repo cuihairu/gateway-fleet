@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# docs site (VitePress): build output + node modules stay out of VCS
+node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/

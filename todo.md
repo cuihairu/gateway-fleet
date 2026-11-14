@@ -1,4 +1,8 @@
 
+## 文档站（2026-11-14，G2 巡检建站）
+
+- [ ] **P2** 浏览器语言自动切换：文档站当前是手动语言菜单（`docs/.vitepress/config.ts` 两个 locale 的 `langMenuLabel`），配置内无 `navigator.language` 探测、无 `rootLocale` 重定向——中文浏览器仍落在英文首页。受规基线=手动切换（已达标），自动识别属增强项；范围待用户拍板（舰队级问题，不单属本仓）。
+
 ## Codex 深审发现（2026-11-13，luna profile 近5 commit 审核，5C/10M/7m，待修）
 
 - [x] 为 `--apply` 增加原子写入、文件锁与变更前快照（`fleet_apply.py:541-590` `apply_material`）——消除半写/lost update 和不可回滚风险。（2026-11-14：tmp+fsync+os.replace 原子替换、`.fleet-lock` flock 防并发、`.fleet-bak` 0600 快照；ApplyMaterialTest 7 例，65 tests OK）
