@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import http.client
 import json
 import os
 import re
@@ -25,7 +26,6 @@ import socket
 import sqlite3
 import sys
 import time
-import http.client
 from pathlib import Path
 from typing import Any
 
@@ -264,7 +264,7 @@ class UnixHTTPConnection(http.client.HTTPConnection):
         super().__init__("localhost", timeout=timeout)
         self._path = path
 
-    def connect(self) -> None:  # noqa: D401 - http.client 契约
+    def connect(self) -> None:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         sock.connect(self._path)

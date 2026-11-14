@@ -1,0 +1,9 @@
+# ruff 基线（回归防护）。
+# E4/E7/E9/F = 默认基线；I = import 排序；EXE = shebang/可执行位；
+# RUF100/012/059 = 无用 noqa / 可变类属性 / 未用解包变量。
+# 不选整个 RUF 家族：RUF001-003 会误报中文注释里的全角标点。
+line-length = 100
+target-version = "py38"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I", "EXE", "RUF100", "RUF012", "RUF059"]

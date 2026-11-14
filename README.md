@@ -67,7 +67,8 @@ upgrade before relying on unattended runs.
 python3 fleet_apply.py --check    # verify: resolve + materials + refs + plaintext scan
 python3 fleet_apply.py --apply    # write managed blocks (0600), then verify
 python3 fleet_apply.py --apply --force   # overwrite conflicting outside-block values
-python3 -m unittest discover -s tests    # unit tests
+python3 -m unittest discover -s tests    # unit + integration tests
+ruff check .                              # lint (CI runs the same two gates)
 ```
 
 Exit code is non-zero on any drift. Output contains names and conclusions only —

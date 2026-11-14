@@ -18,4 +18,4 @@
 - [x] 添加依赖清单并更新安装/运行说明（`requirements.txt` + `README.md`/`README.zh.md` Prerequisites 第 0 步与 Layout 表）——消除 PyYAML 隐式依赖。（2026-11-14：PyYAML>=5.4 显式声明，两份 README 同步安装步骤）
 - [x] 更正 README 中 litellm/hermes 变量数量（`README.md:66-77`、`README.zh.md:58-68`）——消除文档不实。（2026-11-14：脚本核实 litellm-env 实为 20 个变量（原写 18）、hermes-env 实为 5 个含 ARK_API_KEY（原写 4）；两份 README 改正并列全名单；新增护栏测试锁数量，110 tests OK）
 - [x] 补充 persona 最低版本与空闲窗口验证证据说明（`README.md:39-58`、`README.zh.md:43-57`）——让安全前提可复验。（2026-11-14：明示最低构建 ≥ 2026-11-09 及其两个修复点；4 步复验流程含失败判据 `503 vault_locked`；两份 README 同步）
-- [ ] 添加最小 ruff/CI 配置并修复现有 9 个 lint 问题（`fleet_apply.py:17`）——建立回归防护基线。
+- [x] 添加最小 ruff/CI 配置并修复现有 9 个 lint 问题（`ruff.toml`、`.github/workflows/ci.yml`）——建立回归防护基线。（2026-11-14：ruff.toml 锁 E4/E7/E9/F+I+EXE+RUF100/012/059；修 EXE001×2（补可执行位）、I001/RUF100×4（自动）、RUF059×5、RUF012×1；CI 仅 lint+test 无发版 job；`ruff check .` 0 错误，110 tests OK）

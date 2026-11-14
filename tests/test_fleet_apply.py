@@ -9,12 +9,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import yaml  # noqa: E402
+import yaml
 
-import fleet_apply as fa  # noqa: E402
+import fleet_apply as fa
 
 
 class NormalizeTest(unittest.TestCase):
@@ -82,7 +83,7 @@ class ManagedBlockTest(unittest.TestCase):
 
     def test_moves_same_value_outside_line_into_block(self):
         text = "A= same \nKEEP=1\n"  # 归一后同值
-        new, changes, conflicts = fa.merge_managed_block(
+        new, _changes, conflicts = fa.merge_managed_block(
             text, {"A": "same"}, force=False
         )
         self.assertEqual(conflicts, [])
@@ -95,7 +96,7 @@ class ManagedBlockTest(unittest.TestCase):
 
     def test_conflict_keeps_outside_value_unless_force(self):
         text = "A=different\nKEEP=1\n"
-        new, changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=False)
+        new, _changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=False)
         self.assertEqual(len(conflicts), 1)
         self.assertIn("A=different", new)          # 块外原值继续生效
         block_vars = fa.parse_env_lines(new.split(fa.BEGIN)[1].split(fa.END)[0])
@@ -104,7 +105,7 @@ class ManagedBlockTest(unittest.TestCase):
 
     def test_force_overwrites_conflict(self):
         text = "A=different\n"
-        new, changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=True)
+        new, _changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=True)
         self.assertEqual(conflicts, [])
         self.assertNotIn("A=different", new)
         block_vars = fa.parse_env_lines(new.split(fa.BEGIN)[1].split(fa.END)[0])
@@ -119,7 +120,7 @@ class ManagedBlockTest(unittest.TestCase):
 
     def test_conflict_with_existing_block_preserves_block_value(self):
         text = fa.render_block({"A": "oldmanaged"}) + "A=different\nKEEP=1\n"
-        new, changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=False)
+        new, _changes, conflicts = fa.merge_managed_block(text, {"A": "persona"}, force=False)
         block_vars = fa.parse_env_lines(new.split(fa.BEGIN)[1].split(fa.END)[0])
         self.assertEqual(block_vars.get("A"), "oldmanaged")   # 块不清空
         self.assertIn("A=different", new)                     # 块外原值继续生效
@@ -151,7 +152,7 @@ class ManagedBlockTest(unittest.TestCase):
 
 
 class YamlPathTest(unittest.TestCase):
-    NODE = {"model": {"api_key": "x"}, "fallback_providers": [{"api_key": "y"}]}
+    NODE: ClassVar[dict] = {"model": {"api_key": "x"}, "fallback_providers": [{"api_key": "y"}]}
 
     def test_nested(self):
         self.assertEqual(fa.yaml_get_path(self.NODE, "model.api_key"), "x")
@@ -520,7 +521,7 @@ class ApplyMaterialTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "env.systemd"
             path.write_text("A=different\nKEEP=1\n", encoding="utf-8")
-            changes, conflicts = fa.apply_material(
+            _changes, conflicts = fa.apply_material(
                 "m", self._spec(path), {"A": "persona"}, force=False
             )
             self.assertEqual(len(conflicts), 1)
