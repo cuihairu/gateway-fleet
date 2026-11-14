@@ -113,11 +113,11 @@ instead of 19: the measurement reacting to its own write-up, not the page
 changing. The English figures are stable across rebuilds for that reason.
 
 `/zh/audit` is deliberately left unpinned: its caveat must be written in
-Chinese on that very page, so rewording it moves the count it reports — it read
-1059, 1351, 1173 and 1361 across the rebuilds while this note was edited. Not
-asserting a figure that moves under the reader beats asserting a wrong one. The
-observed values are logged in the internal ledger, which is not part of the site
-build and so cannot self-reference.
+Chinese on that very page, so rewording it moves the count it reports — its
+content CJK read 1059, 1184, 1173, 1194 and 1183 across the rebuilds while this
+note was edited. Not asserting a figure that moves under the reader beats
+asserting a wrong one. The observed values are logged in the internal ledger,
+which is not part of the site build and so cannot self-reference.
 
 The README line that said the first deploy was still pending was reworded back
 to a live URL once it went green — that wording would itself have been drift.
