@@ -11,12 +11,14 @@ on:
       - 'docs/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/deploy-docs.yml'
   pull_request:
     paths:
       - 'docs/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
