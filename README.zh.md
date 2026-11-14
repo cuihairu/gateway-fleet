@@ -23,11 +23,15 @@ persona 保险库 (llm-automation)        fleet.yaml                 消费方
 | --- | --- |
 | `fleet.yaml` | 非密配置 + SecretRef（绝不含密钥值） |
 | `fleet_apply.py` | 解析器 + 材料落盘 + 校验（`--check` / `--apply`） |
-| `tests/test_fleet_apply.py` | 纯函数单测（不触网、不碰真实材料） |
+| `tests/test_fleet_apply.py` | 单测 + tempdir 集成测试（不触网、不碰真实材料） |
+| `requirements.txt` | 第三方依赖（仅 PyYAML） |
 
 ## 前置
 
 ```bash
+# 0) Python 3.8+ 与 PyYAML（唯一第三方依赖）
+python3 -m pip install -r requirements.txt
+
 # 1) persona Connect 监听（unix socket；systemd 样例见 persona
 #    docs/EXTERNAL_INTEGRATION.zh.md 第 2 步）
 persona connect serve --unix-socket &

@@ -24,11 +24,15 @@ persona vault (llm-automation)          fleet.yaml                 consumers
 | --- | --- |
 | `fleet.yaml` | non-secret config + SecretRefs (never contains key values) |
 | `fleet_apply.py` | resolver + material writer + checker (`--check` / `--apply`) |
-| `tests/test_fleet_apply.py` | pure-function unit tests (no network, no real materials) |
+| `tests/test_fleet_apply.py` | unit + tempdir integration tests (no network, no real materials) |
+| `requirements.txt` | third-party dependencies (PyYAML only) |
 
 ## Prerequisites
 
 ```bash
+# 0) Python 3.8+ and PyYAML (the only third-party dependency)
+python3 -m pip install -r requirements.txt
+
 # 1) persona Connect listener (unix socket; systemd example in persona
 #    docs/EXTERNAL_INTEGRATION.md Step 2)
 persona connect serve --unix-socket &
