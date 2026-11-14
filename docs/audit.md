@@ -73,3 +73,19 @@ Simplified Chinese, with a manual language menu (`langMenuLabel`) in both.
 Manual switching is the sanctioned baseline; auto-detection is an enhancement
 and is tracked as a P2 todo. Scope is a fleet-wide decision, not a single-repo
 one.
+
+## Closure (deploy landed)
+
+G2R-02 is now resolved by deployment rather than by further wording: the three
+build bugs (duplicate pnpm version → `308c894`; pnpm 12 `strictDepBuilds`
+default → `aacf16a`; `paths` filter missing `pnpm-workspace.yaml` → `f450194`)
+were fixed in that order, and the live probes came back
+
+- `/` → 200, `lang="en-US"`, first-screen CJK 4 (language menu label only)
+- `/zh/` → 200, `lang="zh-CN"`, first-screen CJK 38
+- `features.html` / `keys.html` / `audit.html` / `gaps.html` → 200, `en-US`,
+  CJK 0 (no cross-language leakage)
+- `zh/audit.html` → 200, `zh-CN`, CJK 38
+
+The README line that said the first deploy was still pending was reworded back
+to a live URL once it went green — that wording would itself have been drift.

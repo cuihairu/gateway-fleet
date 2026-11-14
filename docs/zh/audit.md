@@ -63,3 +63,17 @@
 **自动切换未实现**——配置内无 `navigator.language` 探测、无 `rootLocale`
 重定向，中文浏览器仍落在英文首页。手动切换是受规基线；自动识别是增强项，
 已立为 P2 todo。范围属舰队级拍板项，不单属本仓。
+
+## 收口（部署已落地）
+
+G2R-02 由部署本身收口，而非再改措辞：三个构建 bug 依次修掉（pnpm 版本双声明
+→ `308c894`；pnpm 12 默认 `strictDepBuilds` → `aacf16a`；`paths` 过滤表漏
+`pnpm-workspace.yaml` → `f450194`），线上复测：
+
+- `/` → 200，`lang="en-US"`，首屏 CJK 4（仅语言菜单标签）
+- `/zh/` → 200，`lang="zh-CN"`，首屏 CJK 38
+- `features.html` / `keys.html` / `audit.html` / `gaps.html` → 200，`en-US`，
+  CJK 0（无跨语言串页）
+- `zh/audit.html` → 200，`zh-CN`，CJK 38
+
+README 里那句「首次部署仍未落地」在变绿后改回正常链接——否则那句本身就成了新的漂移。
