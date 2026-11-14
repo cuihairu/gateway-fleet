@@ -81,11 +81,27 @@ build bugs (duplicate pnpm version → `308c894`; pnpm 12 `strictDepBuilds`
 default → `aacf16a`; `paths` filter missing `pnpm-workspace.yaml` → `f450194`)
 were fixed in that order, and the live probes came back
 
-- `/` → 200, `lang="en-US"`, first-screen CJK 4 (language menu label only)
-- `/zh/` → 200, `lang="zh-CN"`, first-screen CJK 38
-- `features.html` / `keys.html` / `audit.html` / `gaps.html` → 200, `en-US`,
-  CJK 0 (no cross-language leakage)
-- `zh/audit.html` → 200, `zh-CN`, CJK 38
+| URL | status | `<html lang>` | whole-page CJK | of which content |
+| --- | --- | --- | --- | --- |
+| `/` | 200 | `en-US` | 113 | **0** |
+| `/features` `/keys` `/gaps` `/usage` | 200 | `en-US` | 113 | **0** |
+| `/audit` | 200 | `en-US` | 132 | 19 |
+| `/zh/` | 200 | `zh-CN` | 298 | 170 |
+| `/zh/features` | 200 | `zh-CN` | 874 | 700 |
+| `/zh/keys` | 200 | `zh-CN` | 846 | 671 |
+| `/zh/audit` | 200 | `zh-CN` | 1080 | 913 |
+
+Every CJK character on an English page is page chrome — the zh sidebar entries
+and the language menu label. Content CJK is **0** on all English pages except
+`/audit`, where the 19 characters are two literal Chinese *file names* that must
+match the real paths (`文档与源码一致性审计规范.md`,
+`docs-audit/审计-文档一致性.md`). No translated content crosses locales.
+
+Counting CJK in the *first 2000 bytes* is not a usable metric here: `<head>` and
+nav vary in length per page, so the same page read differently at different byte
+offsets. Whole-page counts with a nav/`<head>` split are deterministic, so that is
+what is asserted. (The earlier "first-screen CJK" figures in the closure notes
+were such an artifact and are superseded.)
 
 The README line that said the first deploy was still pending was reworded back
 to a live URL once it went green — that wording would itself have been drift.
