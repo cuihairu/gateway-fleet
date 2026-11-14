@@ -642,6 +642,111 @@ class MaterialPathValidationTest(unittest.TestCase):
             self.assertTrue(fa.validate_material_path(spec["path"], name).is_absolute())
 
 
+class FleetYamlSchemaStrictTest(unittest.TestCase):
+    MINIMAL = """version: 1
+vault:
+  identity: llm-automation
+  endpoint: "unix:///tmp/x.sock"
+  token_env: T
+materials:
+  m1:
+    path: /tmp/fleet-test-material.env
+    mode: "0600"
+providers:
+  - item: it1
+    consumers:
+      - target: litellm-env
+        vars: [V1]
+"""
+
+    def _loads(self, text: str):
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write(text)
+            p = Path(f.name)
+        try:
+            return fa.load_fleet(p)
+        finally:
+            p.unlink()
+
+    def _rejects(self, text: str, needle: str):
+        with self.assertRaises(SystemExit) as ctx:
+            self._loads(text)
+        self.assertIn(needle, str(ctx.exception))
+
+    def test_minimal_ok(self):
+        cfg = self._loads(self.MINIMAL)
+        self.assertEqual(cfg["providers"][0]["item"], "it1")
+
+    def test_bad_version_rejected(self):
+        self._rejects(self.MINIMAL.replace("version: 1", "version: 2"), "version")
+
+    def test_missing_vault_rejected(self):
+        self._rejects(
+            self.MINIMAL.replace("  identity: llm-automation\n", ""), "vault.identity"
+        )
+
+    def test_unknown_target_rejected(self):
+        self._rejects(
+            self.MINIMAL.replace("target: litellm-env", "target: nope"), "未知 target"
+        )
+
+    def test_env_consumer_without_vars_rejected(self):
+        self._rejects(
+            self.MINIMAL.replace("        vars: [V1]\n", ""), "vars"
+        )
+
+    def test_hermes_config_requires_ref_and_paths(self):
+        text = self.MINIMAL.replace(
+            """      - target: litellm-env
+        vars: [V1]""",
+            '''      - target: hermes-config
+        ref: "${V1}"''',
+        )
+        self._rejects(text, "paths")
+
+    def test_bifrost_key_requires_name(self):
+        text = self.MINIMAL.replace(
+            """      - target: litellm-env
+        vars: [V1]""",
+            "      - target: bifrost-key",
+        )
+        self._rejects(text, "name")
+
+    def test_bad_mode_rejected(self):
+        self._rejects(self.MINIMAL.replace('mode: "0600"', "mode: abc"), "mode")
+
+    def test_gap_orphan_requires_model_and_count(self):
+        self._rejects(
+            self.MINIMAL
+            + "gaps:\n  litellm_plaintext_orphans:\n    - model: m1\n",
+            "count",
+        )
+
+    def test_vault_no_consumer_unknown_item_rejected(self):
+        self._rejects(
+            self.MINIMAL + "gaps:\n  vault_no_consumer: [ghost-item]\n", "ghost-item"
+        )
+
+    def test_duplicate_item_rejected(self):
+        dup = self.MINIMAL.replace(
+            "providers:\n",
+            "providers:\n  - item: it1\n    consumers: []\n",
+        )
+        self._rejects(dup, "重复")
+
+    def test_relative_material_path_rejected(self):
+        self._rejects(
+            self.MINIMAL.replace(
+                "path: /tmp/fleet-test-material.env", "path: relative/x.env"
+            ),
+            "绝对路径",
+        )
+
+    def test_repo_fleet_yaml_passes_strict_schema(self):
+        cfg = fa.load_fleet(Path(__file__).resolve().parent.parent / "fleet.yaml")
+        self.assertGreaterEqual(len(cfg["providers"]), 20)
+
+
 class FleetYamlSchemaTest(unittest.TestCase):
     def test_repo_fleet_yaml_loads(self):
         repo = Path(__file__).resolve().parent.parent

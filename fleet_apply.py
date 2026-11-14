@@ -692,28 +692,117 @@ def apply_material(
 
 # ---------- 主流程 ----------
 
+_CONSUMER_TARGETS = {
+    "litellm-env",
+    "hermes-env",
+    "hermes-config",
+    "bifrost-key",
+    "bifrost-vk",
+    "magpie-caller",
+}
+
+
+def _require_str(v: Any, what: str) -> str:
+    if not isinstance(v, str) or not v:
+        raise SystemExit(f"fleet.yaml: {what} 必须是非空字符串")
+    return v
+
+
+def _require_str_list(v: Any, what: str) -> list[str]:
+    if (
+        not isinstance(v, list)
+        or not v
+        or any(not isinstance(x, str) or not x for x in v)
+    ):
+        raise SystemExit(f"fleet.yaml: {what} 必须是非空字符串列表")
+    return v
+
+
+def _validate_consumer(item: str, c: Any) -> None:
+    if not isinstance(c, dict):
+        raise SystemExit(f"fleet.yaml: {item} consumer 必须是映射")
+    t = c.get("target")
+    if t not in _CONSUMER_TARGETS:
+        raise SystemExit(f"fleet.yaml: {item} 未知 target {t!r}")
+    if t in ("litellm-env", "hermes-env"):
+        _require_str_list(c.get("vars"), f"{item} target {t} 的 vars")
+    elif t == "hermes-config":
+        _require_str(c.get("ref"), f"{item} target hermes-config 的 ref")
+        _require_str_list(c.get("paths"), f"{item} target hermes-config 的 paths")
+    else:  # bifrost-key / bifrost-vk / magpie-caller
+        _require_str(c.get("name"), f"{item} target {t} 的 name")
+        opt = "db" if t.startswith("bifrost") else "file"
+        if c.get(opt) is not None:
+            _require_str(c.get(opt), f"{item} target {t} 的 {opt}")
+
+
+def _validate_gaps(cfg: dict[str, Any], names: list[str]) -> None:
+    gaps = cfg.get("gaps") or {}
+    if not isinstance(gaps, dict):
+        raise SystemExit("fleet.yaml: gaps 必须是映射")
+    for e in gaps.get("litellm_plaintext_orphans", []):
+        if not isinstance(e, dict) or not isinstance(e.get("model"), str):
+            raise SystemExit(
+                "fleet.yaml: gaps.litellm_plaintext_orphans[] 需要 {model, count}"
+            )
+        if not isinstance(e.get("count"), int) or e["count"] < 0:
+            raise SystemExit(
+                f"fleet.yaml: gaps.litellm_plaintext_orphans[{e.get('model')}] "
+                "count 需非负整数"
+            )
+    for e in gaps.get("hermes_plaintext", []):
+        if isinstance(e, dict):
+            _require_str(e.get("path"), "gaps.hermes_plaintext[].path")
+            cnt = e.get("count", 1)
+            if not isinstance(cnt, int) or cnt < 0:
+                raise SystemExit("fleet.yaml: gaps.hermes_plaintext[].count 需非负整数")
+        elif not isinstance(e, str) or not e:
+            raise SystemExit(
+                "fleet.yaml: gaps.hermes_plaintext[] 需路径字符串或 {path, count}"
+            )
+    for key in ("litellm_env_unmanaged", "vault_no_consumer"):
+        lst = gaps.get(key, [])
+        if not isinstance(lst, list) or any(
+            not isinstance(x, str) or not x for x in lst
+        ):
+            raise SystemExit(f"fleet.yaml: gaps.{key} 必须是字符串列表")
+    known = gaps.get("known_quirks", [])
+    if not isinstance(known, list) or any(not isinstance(x, str) for x in known):
+        raise SystemExit("fleet.yaml: gaps.known_quirks 必须是字符串列表")
+    for n in gaps.get("vault_no_consumer", []):
+        if n not in names:
+            raise SystemExit(f"fleet.yaml: gaps.vault_no_consumer 引用不存在的 item {n!r}")
+
 def load_fleet(path: Path) -> dict[str, Any]:
+    """解析并完整校验 fleet.yaml——把配置错误变成精确失败（指名道姓）。"""
     cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(cfg, dict) or cfg.get("version") != 1:
         raise SystemExit("fleet.yaml: 需要 version: 1 的映射")
-    items = cfg.get("providers") or []
-    names = [p.get("item") for p in items]
-    if any(not n for n in names):
-        raise SystemExit("fleet.yaml: providers[].item 必填")
+
+    vault = cfg.get("vault")
+    if not isinstance(vault, dict):
+        raise SystemExit("fleet.yaml: 缺 vault 映射")
+    _require_str(vault.get("identity"), "vault.identity")
+    _require_str(vault.get("endpoint"), "vault.endpoint")
+    _require_str(vault.get("token_env") or "PERSONA_CONNECT_TOKEN", "vault.token_env")
+
+    items = cfg.get("providers")
+    if not isinstance(items, list) or not items:
+        raise SystemExit("fleet.yaml: providers 必须是非空列表")
+    names: list[str] = []
+    for p in items:
+        if not isinstance(p, dict):
+            raise SystemExit("fleet.yaml: providers[] 必须是映射")
+        names.append(_require_str(p.get("item"), "providers[].item"))
+        consumers = p.get("consumers") or []
+        if not isinstance(consumers, list):
+            raise SystemExit(f"fleet.yaml: {p['item']} consumers 必须是列表")
+        for c in consumers:
+            _validate_consumer(p["item"], c)
     dup = {n for n in names if names.count(n) > 1}
     if dup:
         raise SystemExit(f"fleet.yaml: item 重复 {sorted(dup)}")
-    for p in items:
-        for c in p.get("consumers") or []:
-            if c.get("target") not in {
-                "litellm-env",
-                "hermes-env",
-                "hermes-config",
-                "bifrost-key",
-                "bifrost-vk",
-                "magpie-caller",
-            }:
-                raise SystemExit(f"fleet.yaml: {p['item']} 未知 target {c.get('target')!r}")
+
     mats = cfg.get("materials") or {}
     if not isinstance(mats, dict) or not mats:
         raise SystemExit("fleet.yaml: materials 必须是非空映射")
@@ -721,6 +810,15 @@ def load_fleet(path: Path) -> dict[str, Any]:
         if not isinstance(spec, dict) or not isinstance(spec.get("path"), str):
             raise SystemExit(f"fleet.yaml: material {name}: 需要 path 字符串")
         validate_material_path(spec["path"], name)
+        mode = spec.get("mode", "0600")
+        try:
+            int(mode, 8)
+        except (TypeError, ValueError):
+            raise SystemExit(
+                f"fleet.yaml: material {name}: mode 必须是八进制字符串"
+            ) from None
+
+    _validate_gaps(cfg, names)
     return cfg
 
 
