@@ -17,6 +17,34 @@
 五条全部为 P2，均已修。文档里的计数——24 个 providers、`litellm-env` 20 个
 变量、`hermes-env` 5 个变量——按 `fleet.yaml` 重算一致。
 
+## 再审计（G2，2026-11-14/15）
+
+在 `main` `308c894`（工作树干净、与 `origin/main` 同步）上重跑。上表的计数属
+上一轮，本轮不重数。
+
+| 桶 | 计数 | P0 | P1 | P2 |
+| --- | --- | --- | --- | --- |
+| 文档超前于码 | 1 | 1 | 0 | 0 |
+| 文档落后于码 | 0 | 0 | 0 | 0 |
+| 描述不符 | 4 | 0 | 1 | 3 |
+
+- **G2R-01（P0）**——`materials.*.restart_hint` 被写成工具会执行的行为（「变化时提示」）。
+  `fleet_apply.py` 从不读取它：material spec 只用 `path`（409、658、834、836）与
+  `mode`（659、837），唯一的 `[apply]` 输出在 909–918。已改为「已声明但尚未读取」。
+- **G2R-02（P1）**——README 读起来像 Pages 地址已在线。实际不是：
+  `gh api …/deployments` 返回 `[]`，连续 5 次 `Deploy Docs` 失败（最后一次死于
+  pnpm 版本双声明，已修），`/` 与 `/zh/` 实探均 HTTP 404、无 `lang`、CJK 0。
+  两份 README 已标注首次部署未落地。
+- **G2R-03（P2）**——`vault.resolver` 写成像可选项；目前只有 `connect`，
+  且 `fleet_apply.py:873` 硬编码 `ConnectResolver`。
+- **G2R-04（P2）**——`gaps.hermes_plaintext` 形态漏记：`fleet_apply.py:760-769`
+  与 `:981-989` 也接受裸路径字符串（按 1 处计）。
+- **G2R-05（P2）**——上一轮台账写「16 页」；实测构建产出 **15** 页
+  （英文 8 含 `404.html`、中文 7）。台账是日志不改写，改在本节记实测数。
+
+计数类主张按 `fleet.yaml` 全部重算一致（24 条 providers；target 用量
+18/17/5/3/3/1；env 变量 20 与 5 个），features 页约 25 处代码指针逐条比对命中。
+
 ## 已核无漂移面
 
 - Python 3.8+ 声明 ↔ `ruff.toml` `target-version = "py38"`、`from __future__ import annotations`、运行时无 3.9+ 内置泛型字面量。

@@ -18,6 +18,40 @@ All five were P2 and are fixed. Counts quoted in the docs — 24 providers,
 20 `litellm-env` variables, 5 `hermes-env` variables — were recomputed from
 `fleet.yaml` and agree.
 
+## Re-audit (G2, 2026-11-14/15)
+
+Re-run against `main` at `308c894` (tree clean, in sync with `origin/main`).
+Counts above are the earlier round and are not re-counted here.
+
+| bucket | count | P0 | P1 | P2 |
+| --- | --- | --- | --- | --- |
+| docs ahead of code | 1 | 1 | 0 | 0 |
+| docs behind code | 0 | 0 | 0 | 0 |
+| description mismatch | 4 | 0 | 1 | 3 |
+
+- **G2R-01 (P0)** — `materials.*.restart_hint` was documented as something the
+  tool *does* ("shown on change"). `fleet_apply.py` never reads it: material
+  specs are consulted for `path` only (409, 658, 834, 836) and `mode`
+  (659, 837); the only `[apply]` output lines are 909–918. Documented as
+  declared-but-unread (P0 per policy).
+- **G2R-02 (P1)** — the READMEs read as if the Pages URL were live. It is not:
+  `gh api …/deployments` returns `[]`, five consecutive `Deploy Docs` runs
+  failed (the last one dying on a duplicate pnpm version declaration, since
+  fixed), and both `/` and `/zh/` probe as HTTP 404 with no `lang` and no CJK.
+  Both READMEs now say the first deploy is pending.
+- **G2R-03 (P2)** — `vault.resolver` presented as a choice; only `connect`
+  exists and `fleet_apply.py:873` hardcodes `ConnectResolver`.
+- **G2R-04 (P2)** — `gaps.hermes_plaintext` shape understated;
+  `fleet_apply.py:760-769` and `:981-989` also accept a bare path string
+  (counted as one occurrence).
+- **G2R-05 (P2)** — the earlier ledger said 16 built pages; the build
+  produces **15** (8 English incl. `404.html`, 7 Chinese). Ledger is a log,
+  so it was left as written and the real count is recorded instead.
+
+Every numeric claim was recomputed from `fleet.yaml` and agrees (24 providers;
+target usage 18/17/5/3/3/1; 20 and 5 unique env vars), and all ~25 code
+pointers in the features pages were checked line by line.
+
 ## Verified surfaces (no drift)
 
 - Python 3.8+ claim ↔ `ruff.toml` `target-version = "py38"`, `from __future__ import annotations`, no 3.9+ literal generics at runtime.

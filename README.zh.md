@@ -26,7 +26,7 @@ persona 保险库 (llm-automation)        fleet.yaml                 消费方
 | `tests/test_fleet_apply.py` | 单测 + tempdir 集成测试（不触网、不碰真实材料） |
 | `requirements.txt` | 第三方依赖（仅 PyYAML） |
 | `.github/workflows/ci.yml` | CI 两道闸：ruff lint + 单元测试（无发版 job） |
-| `docs/` | VitePress 文档站（英文 root，`/zh/` 中文）；`.github/workflows/deploy-docs.yml` 在 push 时构建到 GitHub Pages `cuihairu.github.io/gateway-fleet/` |
+| `docs/` | VitePress 文档站（英文 root，`/zh/` 中文）；`.github/workflows/deploy-docs.yml` 在 push 时构建到 GitHub Pages `cuihairu.github.io/gateway-fleet/`（首次部署仍未落地——该管线变绿之前 Pages 地址返回 404） |
 | `todo.md` | 发现台账（审计条目 + 收口证据） |
 
 ## 前置
