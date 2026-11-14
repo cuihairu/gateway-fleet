@@ -396,34 +396,76 @@ def check_material(
             fail.add(f"material {name}: {var} 在块外另有定义（所有权漂移）")
 
 
-def check_bifrost_key(name: str, db_path: str, value: str, fail: CheckFailure) -> None:
+def _bifrost_connect(db_path: str, table: str, label: str, fail: CheckFailure):
+    """真正无副作用打开 bifrost 库并前置校验 schema。
+
+    `mode=ro&immutable=1`：SQLite 完全不碰 journal/WAL/SHM（只读校验的
+    读端不该有写副作用）。代价是忽略未落库的 WAL 内容——对"值已轮换但
+    进程还在写"的窗口会报假漂移，属可接受取舍（重跑即可）。
+    不满足前置条件时已写入 fail 并返回 None。
+    """
+    p = expand_path(db_path)
+    if not p.is_file():
+        fail.add(f"{label}: 库文件不存在 {p}")
+        return None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        rows = conn.execute("SELECT value FROM config_keys WHERE name=?", (name,)).fetchall()
-        conn.close()
+        conn = sqlite3.connect(f"file:{p}?mode=ro&immutable=1", uri=True)
     except sqlite3.Error as e:
-        fail.add(f"bifrost-key {name}: 打开库失败 {e}")
+        fail.add(f"{label}: 打开库失败（{type(e).__name__}）")
+        return None
+    try:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone()
+    except sqlite3.Error as e:
+        fail.add(f"{label}: 打开库失败（{type(e).__name__}）")
+        conn.close()
+        return None
+    if not exists:
+        fail.add(f"{label}: schema 不符（缺表 {table}）")
+        conn.close()
+        return None
+    return conn
+
+
+def check_bifrost_key(name: str, db_path: str, value: str, fail: CheckFailure) -> None:
+    label = f"bifrost-key {name}"
+    conn = _bifrost_connect(db_path, "config_keys", label, fail)
+    if conn is None:
         return
+    try:
+        rows = conn.execute(
+            "SELECT value FROM config_keys WHERE name=?", (name,)
+        ).fetchall()
+    except sqlite3.Error as e:
+        fail.add(f"{label}: 读取失败（{type(e).__name__}）")
+        return
+    finally:
+        conn.close()
     if not rows:
-        fail.add(f"bifrost-key {name}: 不存在")
+        fail.add(f"{label}: 不存在")
     elif normalize(rows[0][0] or "") != value:
-        fail.add(f"bifrost-key {name}: 值与 persona 不一致（bifrost 侧已轮换？）")
+        fail.add(f"{label}: 值与 persona 不一致（bifrost 侧已轮换？）")
 
 
 def check_bifrost_vk(name: str, db_path: str, value: str, fail: CheckFailure) -> None:
+    label = f"bifrost-vk {name}"
+    conn = _bifrost_connect(db_path, "governance_virtual_keys", label, fail)
+    if conn is None:
+        return
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         rows = conn.execute(
             "SELECT value FROM governance_virtual_keys WHERE name=?", (name,)
         ).fetchall()
-        conn.close()
     except sqlite3.Error as e:
-        fail.add(f"bifrost-vk {name}: 打开库失败 {e}")
+        fail.add(f"{label}: 读取失败（{type(e).__name__}）")
         return
+    finally:
+        conn.close()
     if not rows:
-        fail.add(f"bifrost-vk {name}: 不存在")
+        fail.add(f"{label}: 不存在")
     elif normalize(rows[0][0] or "") != value:
-        fail.add(f"bifrost-vk {name}: 值与 persona 不一致")
+        fail.add(f"{label}: 值与 persona 不一致")
 
 
 def check_magpie_caller(name: str, path: Path, value: str, fail: CheckFailure) -> None:

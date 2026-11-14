@@ -4,6 +4,7 @@
 运行：python3 -m unittest discover -s tests -v
 """
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -298,6 +299,72 @@ class SecretInjectionGuardTest(unittest.TestCase):
         self.assertEqual(fa.render_value("a b"), '"a b"')
         new, _, _ = fa.merge_managed_block("", {"A": "sk-abc_1.2:x/y+z"}, force=False)
         self.assertIn("A=sk-abc_1.2:x/y+z\n", new)
+
+
+class BifrostCheckTest(unittest.TestCase):
+    def _make_db(self, d: Path) -> Path:
+        db = d / "config.db"
+        conn = sqlite3.connect(str(db))
+        conn.execute("CREATE TABLE config_keys (name TEXT PRIMARY KEY, value TEXT)")
+        conn.execute(
+            "INSERT INTO config_keys VALUES (?, ?)", ("zai-glm", "sk-live-value")
+        )
+        conn.commit()
+        conn.execute("PRAGMA journal_mode=wal")  # WAL 库是副作用最典型的形态
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.close()
+        return db
+
+    def test_matching_key_ok_and_no_side_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            db = self._make_db(d)
+            baseline = {p.name for p in d.iterdir()}
+            f = fa.CheckFailure()
+            fa.check_bifrost_key("zai-glm", str(db), "sk-live-value", f)
+            self.assertEqual(f.errors, [])
+            after = {p.name for p in d.iterdir()}
+            self.assertEqual(after, baseline)  # 无 -shm/-journal 新增
+            self.assertFalse(any("shm" in n for n in after))
+            self.assertFalse(any(n.endswith("-journal") for n in after))
+
+    def test_drift_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = self._make_db(Path(d))
+            f = fa.CheckFailure()
+            fa.check_bifrost_key("zai-glm", str(db), "sk-rotated", f)
+            self.assertTrue(any("不一致" in e for e in f.errors))
+
+    def test_missing_key_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = self._make_db(Path(d))
+            f = fa.CheckFailure()
+            fa.check_bifrost_key("nope", str(db), "x", f)
+            self.assertTrue(any("不存在" in e for e in f.errors))
+
+    def test_missing_file_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = fa.CheckFailure()
+            fa.check_bifrost_key("x", str(Path(d) / "absent.db"), "v", f)
+            self.assertTrue(any("库文件不存在" in e for e in f.errors))
+
+    def test_missing_table_schema_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "config.db"
+            conn = sqlite3.connect(str(db))
+            conn.execute("CREATE TABLE something_else (x TEXT)")
+            conn.commit()
+            conn.close()
+            f = fa.CheckFailure()
+            fa.check_bifrost_key("x", str(db), "v", f)
+            self.assertTrue(any("schema 不符" in e for e in f.errors))
+
+    def test_vk_missing_table_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = self._make_db(Path(d))
+            f = fa.CheckFailure()
+            fa.check_bifrost_vk("vk-main", str(db), "v", f)
+            self.assertTrue(any("schema 不符" in e for e in f.errors))
 
 
 class BlockStructureTest(unittest.TestCase):
