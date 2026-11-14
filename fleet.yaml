@@ -26,6 +26,14 @@ materials:
     mode: "0600"
     restart_hint: null               # hermes 每次加载配置重读 .env（mtime/env 快照失效）
 
+# 只读校验目标（单一事实源：fleet-apply 从这里读，不再硬编码；逐条可用
+# consumer 的 db/file 字段覆盖）
+check_targets:
+  litellm_config: ~/.local/share/litellm/config.yaml
+  hermes_config: ~/.hermes/config.yaml
+  bifrost_db: ~/.local/share/bifrost/data/config.db
+  magpie_caller_keys: ~/.config/magpie/caller-keys.json
+
 # 消费方 target 语义：
 #   litellm-env / hermes-env  —— 写入对应 material 的托管块（vars 为该文件中的变量名）
 #   hermes-config             —— 校验 yaml 路径当前值 == ref（一次性接线后防退回明文）

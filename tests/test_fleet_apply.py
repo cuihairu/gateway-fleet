@@ -746,6 +746,26 @@ providers:
         cfg = fa.load_fleet(Path(__file__).resolve().parent.parent / "fleet.yaml")
         self.assertGreaterEqual(len(cfg["providers"]), 20)
 
+    def test_unknown_check_target_key_rejected(self):
+        self._rejects(
+            self.MINIMAL + "check_targets:\n  bogus: /tmp/x\n", "未知键"
+        )
+
+    def test_nonstring_check_target_rejected(self):
+        self._rejects(
+            self.MINIMAL + "check_targets:\n  litellm_config: 123\n", "check_targets"
+        )
+
+    def test_repo_fleet_yaml_declares_all_targets(self):
+        cfg = fa.load_fleet(Path(__file__).resolve().parent.parent / "fleet.yaml")
+        targets = cfg["check_targets"]
+        self.assertEqual(
+            set(targets),
+            {"litellm_config", "hermes_config", "bifrost_db", "magpie_caller_keys"},
+        )
+        for v in targets.values():
+            self.assertIsInstance(v, str)
+
 
 class FleetYamlSchemaTest(unittest.TestCase):
     def test_repo_fleet_yaml_loads(self):

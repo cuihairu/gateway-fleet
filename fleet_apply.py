@@ -773,6 +773,23 @@ def _validate_gaps(cfg: dict[str, Any], names: list[str]) -> None:
         if n not in names:
             raise SystemExit(f"fleet.yaml: gaps.vault_no_consumer 引用不存在的 item {n!r}")
 
+def _validate_check_targets(cfg: dict[str, Any]) -> dict[str, str]:
+    targets = cfg.get("check_targets") or {}
+    if not isinstance(targets, dict):
+        raise SystemExit("fleet.yaml: check_targets 必须是映射")
+    allowed = {
+        "litellm_config",
+        "hermes_config",
+        "bifrost_db",
+        "magpie_caller_keys",
+    }
+    for k, v in targets.items():
+        if k not in allowed:
+            raise SystemExit(f"fleet.yaml: check_targets 未知键 {k!r}")
+        _require_str(v, f"check_targets.{k}")
+    return targets
+
+
 def load_fleet(path: Path) -> dict[str, Any]:
     """解析并完整校验 fleet.yaml——把配置错误变成精确失败（指名道姓）。"""
     cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -819,6 +836,7 @@ def load_fleet(path: Path) -> dict[str, Any]:
             ) from None
 
     _validate_gaps(cfg, names)
+    _validate_check_targets(cfg)
     return cfg
 
 
@@ -868,6 +886,11 @@ def main(argv: list[str] | None = None) -> int:
                     wanted[c["target"]][var] = val
 
     fail = CheckFailure()
+    targets = cfg.get("check_targets") or {}
+
+    def read_target(key: str, default: str) -> str:
+        """只读校验目标：fleet.yaml check_targets 优先，缺省退回内置默认。"""
+        return targets.get(key) or default
 
     if args.apply:
         for name, spec in mats.items():
@@ -899,37 +922,55 @@ def main(argv: list[str] | None = None) -> int:
     for p in cfg["providers"]:
         val = values[p["item"]]
         for c in p.get("consumers") or []:
-            t, tgt = c["target"], c.get("name")
+            t, cname = c["target"], c.get("name")
             if t == "bifrost-key":
                 check_bifrost_key(
-                    tgt, str(expand_path(c.get("db", "~/.local/share/bifrost/data/config.db"))),
+                    cname,
+                    c.get("db") or read_target(
+                        "bifrost_db", "~/.local/share/bifrost/data/config.db"
+                    ),
                     val, fail,
                 )
             elif t == "bifrost-vk":
                 check_bifrost_vk(
-                    tgt, str(expand_path(c.get("db", "~/.local/share/bifrost/data/config.db"))),
+                    cname,
+                    c.get("db") or read_target(
+                        "bifrost_db", "~/.local/share/bifrost/data/config.db"
+                    ),
                     val, fail,
                 )
             elif t == "magpie-caller":
                 check_magpie_caller(
-                    tgt, expand_path(c.get("file", "~/.config/magpie/caller-keys.json")),
+                    cname,
+                    expand_path(
+                        c.get("file") or read_target(
+                            "magpie_caller_keys", "~/.config/magpie/caller-keys.json"
+                        )
+                    ),
                     val, fail,
                 )
             elif t == "hermes-config":
-                hermes_cfg_path = expand_path(c.get("file", "~/.hermes/config.yaml"))
+                hermes_cfg_path = expand_path(
+                    c.get("file")
+                    or read_target("hermes_config", "~/.hermes/config.yaml")
+                )
                 check_hermes_refs(c["paths"], c["ref"], hermes_cfg_path, fail)
 
-    # 明文泄漏扫描（两类配置）
+    # 明文泄漏扫描（两类配置；目标路径同源 check_targets）
     gaps = cfg.get("gaps") or {}
     allow = {
         e["model"]: e["count"]
         for e in gaps.get("litellm_plaintext_orphans", [])
     }
     scan_plaintext_leaks(
-        "litellm", expand_path("~/.local/share/litellm/config.yaml"), values, allow, fail
+        "litellm",
+        expand_path(read_target("litellm_config", "~/.local/share/litellm/config.yaml")),
+        values, allow, fail,
     )
     if hermes_cfg_path is None:
-        hermes_cfg_path = expand_path("~/.hermes/config.yaml")
+        hermes_cfg_path = expand_path(
+            read_target("hermes_config", "~/.hermes/config.yaml")
+        )
     # hermes 登记格式：路径字符串（每条记 1 处）或 {path, count}
     hermes_allow: dict[str, int] = {}
     for e in gaps.get("hermes_plaintext", []):
