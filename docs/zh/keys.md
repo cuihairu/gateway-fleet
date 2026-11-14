@@ -19,7 +19,7 @@
 | 键 | 含义 |
 | --- | --- |
 | `identity` | 持有密钥的 persona 身份——`llm-automation` |
-| `resolver` | `connect`：unix socket 的 Connect API（不经主密码） |
+| `resolver` | 声明解析器类型；目前只有 `connect`，且工具并不读取该值——信息性字段，没有可切换的备选实现 |
 | `endpoint` | unix socket，支持 env 展开（`${XDG_RUNTIME_DIR:-/run/user/1000}`） |
 | `token_env` | 存放作用域 `pconn_` token 的环境变量名——token 绝不出现在文件里 |
 | `normalize` | `strip-quotes`：比对与落地前剥掉 `litellm-master-key` 的导入瑕疵引号 |
@@ -32,7 +32,7 @@
 | --- | --- |
 | `path` | 绝对路径或 `~` 路径；相对路径、`..` 段、符号链接与带软链祖先均被拒绝 |
 | `mode` | 新建时写入的八进制权限字符串（材料为 `0600`） |
-| `restart_hint` | 变化时提示；加载配置时重读的消费者写 `null` |
+| `restart_hint` | 已声明但**`fleet_apply.py` 尚未读取**——信息性标注；重启步骤写在用法/轮换页。加载配置时重读的消费者写 `null` |
 
 当前材料：`litellm-env` → `~/.local/share/litellm/env.systemd`，
 `hermes-env` → `~/.hermes/.env`。
@@ -56,7 +56,7 @@
 | 键 | 形态 | 含义 |
 | --- | --- | --- |
 | `litellm_plaintext_orphans` | `{model, count}` 列表 | vault 无对应 key 的明文模型——唯一允许的 litellm 明文，按模型计数 |
-| `hermes_plaintext` | `{path, count}` 列表 | 允许的 hermes 明文路径；未登记的明文默认失败 |
+| `hermes_plaintext` | 裸路径字符串 或 `{path, count}` 列表 | 允许的 hermes 明文路径（裸字符串按 1 处计）；未登记的明文默认失败 |
 | `litellm_env_unmanaged` | 变量名列表 | `env.systemd` 中无 vault 覆盖的变量 |
 | `vault_no_consumer` | 条目 id 列表 | 无消费方的 vault 条目（备用键） |
 | `known_quirks` | 字符串列表 | 自由文本备注（如带引号的 `litellm-master-key`） |

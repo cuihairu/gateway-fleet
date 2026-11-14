@@ -19,7 +19,7 @@ entry. Counts are recomputed from the file at audit time.
 | key | meaning |
 | --- | --- |
 | `identity` | persona identity holding the keys — `llm-automation` |
-| `resolver` | `connect`: the unix-socket Connect API (no master password) |
+| `resolver` | declares the resolver kind; only `connect` exists and the tool ignores the value — informational, no alternative is wired |
 | `endpoint` | unix socket, env-expandable (`${XDG_RUNTIME_DIR:-/run/user/1000}`) |
 | `token_env` | name of the environment variable holding the scoped `pconn_` token — the token never sits in the file |
 | `normalize` | `strip-quotes`: unwrap the import artifact on `litellm-master-key` before comparing and materialising |
@@ -32,7 +32,7 @@ One entry per writable file, each with:
 | --- | --- |
 | `path` | absolute-or-`~` path; relative paths, `..` segments, symlinks and symlinked ancestors are rejected |
 | `mode` | octal mode string written on create (materials are `0600`) |
-| `restart_hint` | shown on change; `null` for consumers that re-read on config load |
+| `restart_hint` | declared but **not read by `fleet_apply.py` yet** — an informational annotation; restart steps live on the Usage and rotation page. `null` for consumers that re-read on config load |
 
 Current materials: `litellm-env` → `~/.local/share/litellm/env.systemd`,
 `hermes-env` → `~/.hermes/.env`.
@@ -56,7 +56,7 @@ Target usage in the current file: `litellm-env` 18, `bifrost-key` 17,
 | key | shape | meaning |
 | --- | --- | --- |
 | `litellm_plaintext_orphans` | list of `{model, count}` | plaintext models with no vault key — the only allowed litellm plaintext, counted per model |
-| `hermes_plaintext` | list of `{path, count}` | allowed hermes plaintext paths; anything unregistered fails by default |
+| `hermes_plaintext` | list of bare path strings or `{path, count}` | allowed hermes plaintext paths (a bare string counts as one occurrence); anything unregistered fails by default |
 | `litellm_env_unmanaged` | list of names | `env.systemd` variables with no vault coverage |
 | `vault_no_consumer` | list of item ids | vault items with no consumer (spare keys) |
 | `known_quirks` | list of strings | free-text notes (e.g. the quoted `litellm-master-key` value) |
