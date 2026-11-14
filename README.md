@@ -27,7 +27,7 @@ persona vault (llm-automation)          fleet.yaml                 consumers
 | `tests/test_fleet_apply.py` | unit + tempdir integration tests (no network, no real materials) |
 | `requirements.txt` | third-party dependencies (PyYAML only) |
 | `.github/workflows/ci.yml` | CI gates: ruff lint + unittest (no release job) |
-| `docs/` | VitePress site (English root, `/zh/` Chinese) → [cuihairu.github.io/gateway-fleet](https://cuihairu.github.io/gateway-fleet/) |
+| `docs/` | VitePress site (English root, `/zh/` Chinese); `.github/workflows/deploy-docs.yml` builds it to GitHub Pages at `cuihairu.github.io/gateway-fleet/` on push |
 | `todo.md` | finding ledger (audit items + resolution evidence) |
 
 ## Prerequisites

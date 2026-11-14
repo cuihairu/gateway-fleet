@@ -35,6 +35,10 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Configure Pages
+        # Pages is not enabled yet on this repo, so the first run has to
+        # switch the source to "GitHub Actions" itself.
+        uses: actions/configure-pages@v5
       - uses: pnpm/action-setup@v4
         with:
           version: 12
