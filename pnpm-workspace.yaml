@@ -6,3 +6,11 @@
 onlyBuiltDependencies:
   - esbuild
 strictDepBuilds: false
+
+# vitepress 1.6.4 declares vite ^5.4.14, but every dependabot alert against the
+# docs toolchain (vite <= 6.4.3, esbuild <= 0.24.2) is only patched in
+# vite 6.4.4 / esbuild 0.25.0, so the versions are forced here. Kept only while
+# the build stays green; drop it if vitepress is ever bumped past 1.x.
+overrides:
+  vite: 6.4.4
+  esbuild: 0.25.0
