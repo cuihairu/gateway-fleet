@@ -3,7 +3,7 @@
 
 - [ ] **P2** 浏览器语言自动切换：文档站当前是手动语言菜单（`docs/.vitepress/config.ts` 两个 locale 的 `langMenuLabel`），配置内无 `navigator.language` 探测、无 `rootLocale` 重定向——中文浏览器仍落在英文首页。受规基线=手动切换（已达标），自动识别属增强项；范围待用户拍板（舰队级问题，不单属本仓）。**BLOCKED——等用户拍板舰队范围后再动本仓。**
 
-- [x] 清掉文档站工具链的 9 条 dependabot 告警（1 high + 7 medium + 1 low，全在 vite/esbuild）。（2026-11-15：告警针对 vite ≤ 6.4.3 与 esbuild ≤ 0.24.2，补丁版只有 vite 6.4.4 / esbuild 0.25.0，而 vitepress 1.6.4 声明 vite ^5.4.14 → `pnpm-workspace.yaml` overrides 强升至 6.4.4/0.25.0；`pnpm install` exit=0、build exit=0、15 页产物与 vite 5 逐页一致（`/audit` 132/19 不变量仍成立）；110 tests OK、ruff 干净。注：vite/esbuild 是纯 devDependency，静态站产物不含运行时——但按「能修就修」处理而非风险接受）
+- [x] 清掉文档站工具链的 10 条 dependabot 告警（初报 1 high + 7 medium + 1 low 全在 vite/esbuild；修完后 vite 6.4.4 自身被新告警 #10 点名 `server.fs.deny` 绕过，patched=6.4.5）。（2026-11-15：补丁只在 vite 6.4.x 线 / esbuild ≥0.25.0，而 vitepress 1.6.4 声明 vite ^5.4.14 → `pnpm-workspace.yaml` overrides 锁 `vite: 6.4.6` + `esbuild: 0.25.0`；`pnpm install` exit=0、build exit=0、15 页产物与 vite 5 逐页一致（`/audit` 132/19 不变量仍成立）；110 tests OK、ruff 干净；推送后 dependabot 重扫终态 **fixed:10 / open:0**，两条 Deploy Docs run（`56f9be9`、`98d26da`）均 success。注：vite/esbuild 是纯 devDependency，静态站产物不含运行时——但按「能修就修」处理而非风险接受）
 
 ## Codex 深审发现（2026-11-13，luna profile 近5 commit 审核，5C/10M/7m，待修）
 
